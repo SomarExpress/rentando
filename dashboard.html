@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Panel - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <!-- HEADER -->
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content" id="dashboard-content">
+      <!-- Contenido se renderiza con JS -->
+      <div style="text-align:center;padding:4rem">
+        <div class="spinner" style="margin:0 auto"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    // Cargar dashboard
+    (async function() {
+      const result = await requireAuth();
+      if (!result) return;
+
+      const { user, profile } = result;
+
+      // Renderizar header con info de usuario
+      await initLayout();
+
+      // Si es admin, mostrar mensaje especial
+      if (profile?.role === 'admin') {
+        renderAdminMessage();
+        return;
+      }
+
+      // Renderizar dashboard según rol
+      renderDashboard(profile);
+    })();
+
+    function renderAdminMessage() {
+      document.getElementById('dashboard-content').innerHTML = `
+        <div style="max-width:640px;margin:4rem auto">
+          <div class="card card-padding" style="text-align:center">
+            <div style="width:80px;height:80px;background:var(--primary-100);color:var(--primary);border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+              <i data-lucide="shield" style="width:36px;height:36px"></i>
+            </div>
+            <h1 style="font-size:1.75rem;margin-bottom:0.75rem">Eres Administrador</h1>
+            <p style="color:var(--text-medium);margin-bottom:1rem">
+              Tu cuenta tiene rol de administrador. Por favor accede al panel de admin separado.
+            </p>
+            <p style="color:var(--text-light);font-size:0.875rem">
+              URL del panel admin: <code style="background:var(--bg-cream);padding:4px 10px;border-radius:6px">admin/index.html</code>
+            </p>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderDashboard(profile) {
+      const firstName = profile?.full_name?.split(' ')[0] || 'Bienvenido';
+      const isOwner = profile?.role === 'owner';
+      const isVerified = profile?.verification_status === 'verified';
+
+      // Configuración del banner de verificación
+      const verificationConfig = getVerificationConfig(profile);
+
+      // Cards según rol
+      const roleCards = isOwner ? renderOwnerCards(isVerified) : renderRenterCards(isVerified);
+
+      document.getElementById('dashboard-content').innerHTML = `
+        <div class="animate-fade-in">
+          <div class="dashboard-header">
+            <h1 class="dashboard-greeting">¡Hola, ${firstName}! 👋</h1>
+            <p class="dashboard-subtitle">
+              ${isOwner ? 'Gestiona tus propiedades y conecta con rentadores' : 'Encuentra tu próximo hogar en Honduras'}
+            </p>
+          </div>
+
+          ${verificationConfig}
+
+          <div class="dashboard-grid">
+            ${roleCards}
+          </div>
+        </div>
+      `;
+
+      lucide.createIcons();
+    }
+
+    function getVerificationConfig(profile) {
+      const status = profile?.verification_status || 'pending';
+
+      const configs = {
+        pending: {
+          class: 'verification-banner-pending',
+          icon: 'alert-circle',
+          title: 'Verificación pendiente',
+          description: 'Necesitas verificar tu identidad para usar todas las funciones.',
+          action: 'Verificar ahora',
+          link: 'verificacion.html',
+        },
+        submitted: {
+          class: 'verification-banner-submitted',
+          icon: 'clock',
+          title: 'Verificación en revisión',
+          description: 'Estamos revisando tus documentos. Esto puede tomar 24-48 horas.',
+          action: 'Ver estado',
+          link: 'verificacion.html',
+        },
+        verified: {
+          class: 'verification-banner-verified',
+          icon: 'check-circle-2',
+          title: 'Cuenta verificada ✓',
+          description: 'Tu identidad ha sido verificada. Puedes usar todas las funciones.',
+          action: null,
+        },
+        rejected: {
+          class: 'verification-banner-rejected',
+          icon: 'alert-circle',
+          title: 'Verificación rechazada',
+          description: profile?.verification_notes || 'Hubo un problema con tus documentos. Intenta de nuevo.',
+          action: 'Reintentar',
+          link: 'verificacion.html',
+        },
+      };
+
+      const cfg = configs[status];
+
+      return `
+        <div class="verification-banner ${cfg.class}">
+          <div class="verification-icon">
+            <i data-lucide="${cfg.icon}" style="width:28px;height:28px"></i>
+          </div>
+          <div style="flex:1">
+            <h3 class="verification-title">${cfg.title}</h3>
+            <p class="verification-description">${cfg.description}</p>
+            ${cfg.action ? `
+              <a href="${cfg.link}" class="verification-link">
+                ${cfg.action}
+                <i data-lucide="arrow-right" style="width:14px;height:14px"></i>
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderOwnerCards(isVerified) {
+      const disabledStyle = !isVerified ? 'opacity:0.5;cursor:not-allowed;pointer-events:none' : '';
+      const disabledMsg = !isVerified ? '<small style="color:var(--text-light);display:block;margin-top:0.5rem">Verifica tu cuenta primero</small>' : '';
+
+      return `
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <div class="dashboard-card-icon dashboard-card-icon-primary">
+              <i data-lucide="building-2" style="width:24px;height:24px"></i>
+            </div>
+            <h3 class="dashboard-card-title">Mis propiedades</h3>
+          </div>
+          <p class="dashboard-card-description">
+            Gestiona tus propiedades publicadas y revisa solicitudes de contacto.
+          </p>
+          <a href="propiedades.html" class="btn btn-primary btn-full" style="${disabledStyle}">
+            Ver mis propiedades
+          </a>
+          ${disabledMsg}
+        </div>
+
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <div class="dashboard-card-icon dashboard-card-icon-secondary">
+              <i data-lucide="plus-circle" style="width:24px;height:24px"></i>
+            </div>
+            <h3 class="dashboard-card-title">Publicar propiedad</h3>
+          </div>
+          <p class="dashboard-card-description">
+            Agrega una nueva casa o apartamento para encontrar rentadores.
+          </p>
+          <a href="publicar.html" class="btn btn-secondary btn-full" style="${disabledStyle}">
+            Publicar nueva propiedad
+          </a>
+          ${disabledMsg}
+        </div>
+      `;
+    }
+
+    function renderRenterCards(isVerified) {
+      const disabledStyle = !isVerified ? 'opacity:0.5;cursor:not-allowed;pointer-events:none' : '';
+      const disabledMsg = !isVerified ? '<small style="color:var(--text-light);display:block;margin-top:0.5rem">Verifica tu cuenta primero</small>' : '';
+
+      return `
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <div class="dashboard-card-icon dashboard-card-icon-primary">
+              <i data-lucide="search" style="width:24px;height:24px"></i>
+            </div>
+            <h3 class="dashboard-card-title">Buscar propiedades</h3>
+          </div>
+          <p class="dashboard-card-description">
+            Explora casas y apartamentos disponibles en tu ciudad.
+          </p>
+          <a href="propiedades.html" class="btn btn-primary btn-full">
+            Explorar propiedades
+          </a>
+        </div>
+
+        <div class="dashboard-card">
+          <div class="dashboard-card-header">
+            <div class="dashboard-card-icon dashboard-card-icon-secondary">
+              <i data-lucide="message-square" style="width:24px;height:24px"></i>
+            </div>
+            <h3 class="dashboard-card-title">Mis solicitudes</h3>
+          </div>
+          <p class="dashboard-card-description">
+            Revisa el estado de tus solicitudes de contacto.
+          </p>
+          <a href="solicitudes.html" class="btn btn-secondary btn-full" style="${disabledStyle}">
+            Ver mis solicitudes
+          </a>
+          ${disabledMsg}
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

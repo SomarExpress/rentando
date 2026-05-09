@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crear cuenta - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="auth-page">
+  
+  <div class="auth-container">
+    
+    <!-- Logo -->
+    <a href="index.html" class="auth-logo">
+      <div class="logo-icon">
+        <i data-lucide="home" style="width:28px;height:28px"></i>
+      </div>
+      <span class="logo-text">RENTO</span>
+    </a>
+
+    <!-- PASO 1: Selección de rol -->
+    <div class="auth-card" id="step-role">
+      <div class="auth-header">
+        <h1 class="auth-title">¿Cómo te unirás?</h1>
+        <p class="auth-subtitle">Elige tu rol en RENTO</p>
+      </div>
+
+      <div class="role-selector">
+        <button type="button" class="role-option" onclick="selectRole('renter')">
+          <div class="role-icon role-icon-renter">
+            <i data-lucide="key" style="width:24px;height:24px"></i>
+          </div>
+          <div class="role-info">
+            <h3>Soy Rentador</h3>
+            <p>Estoy buscando una casa o apartamento para rentar</p>
+          </div>
+        </button>
+
+        <button type="button" class="role-option" onclick="selectRole('owner')">
+          <div class="role-icon role-icon-owner">
+            <i data-lucide="building-2" style="width:24px;height:24px"></i>
+          </div>
+          <div class="role-info">
+            <h3>Soy Dueño</h3>
+            <p>Quiero publicar mi propiedad para encontrar rentadores</p>
+          </div>
+        </button>
+      </div>
+
+      <p class="auth-footer">
+        ¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a>
+      </p>
+    </div>
+
+    <!-- PASO 2: Formulario -->
+    <div class="auth-card hidden" id="step-form">
+      <div class="auth-header">
+        <span class="auth-back-link" onclick="goToRoleStep()">← Cambiar rol</span>
+        <h1 class="auth-title">
+          Crear cuenta como
+          <span class="text-primary" id="role-display">Rentador</span>
+        </h1>
+        <p class="auth-subtitle">Completa tus datos</p>
+      </div>
+
+      <div id="error-message" class="alert alert-error hidden"></div>
+
+      <form id="register-form">
+        <div class="input-group">
+          <label for="fullName" class="input-label">Nombre completo</label>
+          <div class="input-wrapper">
+            <i data-lucide="user" class="input-icon" style="width:18px;height:18px"></i>
+            <input type="text" id="fullName" class="input-field has-icon" placeholder="Juan Pérez" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="email" class="input-label">Email</label>
+          <div class="input-wrapper">
+            <i data-lucide="mail" class="input-icon" style="width:18px;height:18px"></i>
+            <input type="email" id="email" class="input-field has-icon" placeholder="tu@email.com" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="phone" class="input-label">Teléfono (WhatsApp)</label>
+          <div class="input-wrapper">
+            <i data-lucide="phone" class="input-icon" style="width:18px;height:18px"></i>
+            <input type="tel" id="phone" class="input-field has-icon" placeholder="9876-5432" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="password" class="input-label">Contraseña</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon" style="width:18px;height:18px"></i>
+            <input type="password" id="password" class="input-field has-icon" placeholder="Mínimo 6 caracteres" required minlength="6">
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="confirmPassword" class="input-label">Confirmar contraseña</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon" style="width:18px;height:18px"></i>
+            <input type="password" id="confirmPassword" class="input-field has-icon" placeholder="Repite tu contraseña" required>
+          </div>
+        </div>
+
+        <button type="submit" id="submit-btn" class="btn btn-primary btn-full">
+          <span id="btn-text">Crear cuenta</span>
+          <span id="btn-spinner" class="spinner spinner-small hidden" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span>
+        </button>
+      </form>
+
+      <p class="auth-footer">
+        ¿Ya tienes cuenta? <a href="login.html">Inicia sesión</a>
+      </p>
+    </div>
+
+    <!-- PASO 3: Confirmación -->
+    <div class="auth-card hidden" id="step-success">
+      <div style="text-align:center">
+        <div style="width:80px;height:80px;background:var(--secondary-100);color:var(--secondary);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+          <i data-lucide="mail" style="width:36px;height:36px"></i>
+        </div>
+        <h1 class="auth-title">¡Revisa tu email!</h1>
+        <p class="auth-subtitle" style="margin-bottom:1.5rem">
+          Te hemos enviado un enlace de confirmación a <strong id="success-email"></strong>. 
+          Haz clic en el enlace para activar tu cuenta.
+        </p>
+        <a href="login.html" class="btn btn-primary btn-full">Ir a iniciar sesión</a>
+      </div>
+    </div>
+
+    <a href="index.html" class="auth-link-back">← Volver al inicio</a>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    // Si ya está logueado, redirigir
+    redirectIfAuthenticated();
+
+    let selectedRole = 'renter';
+
+    // Leer rol de la URL si viene
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleFromUrl = urlParams.get('role');
+    if (roleFromUrl === 'owner' || roleFromUrl === 'renter') {
+      selectRole(roleFromUrl);
+    }
+
+    function selectRole(role) {
+      selectedRole = role;
+      document.getElementById('role-display').textContent = role === 'owner' ? 'Dueño' : 'Rentador';
+      document.getElementById('step-role').classList.add('hidden');
+      document.getElementById('step-form').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function goToRoleStep() {
+      document.getElementById('step-form').classList.add('hidden');
+      document.getElementById('step-role').classList.remove('hidden');
+      hideError('error-message');
+      lucide.createIcons();
+    }
+
+    function showSuccess(email) {
+      document.getElementById('step-form').classList.add('hidden');
+      document.getElementById('success-email').textContent = email;
+      document.getElementById('step-success').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    // Inicializar iconos
+    lucide.createIcons();
+
+    // Manejar formulario
+    const form = document.getElementById('register-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError('error-message');
+
+      const fullName = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      // Validaciones
+      if (fullName.length < 3) {
+        showError('error-message', 'El nombre debe tener al menos 3 caracteres');
+        return;
+      }
+      if (!isValidEmail(email)) {
+        showError('error-message', 'Email inválido');
+        return;
+      }
+      if (phone.length < 8) {
+        showError('error-message', 'El teléfono debe tener al menos 8 dígitos');
+        return;
+      }
+      if (password.length < 6) {
+        showError('error-message', 'La contraseña debe tener al menos 6 caracteres');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showError('error-message', 'Las contraseñas no coinciden');
+        return;
+      }
+
+      // Loading
+      submitBtn.disabled = true;
+      btnText.textContent = 'Creando cuenta...';
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        const { data, error } = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              role: selectedRole,
+            },
+            emailRedirectTo: window.location.origin + '/login.html',
+          },
+        });
+
+        if (error) {
+          let msg = 'Error al crear la cuenta';
+          if (error.message.includes('already registered')) {
+            msg = 'Este email ya está registrado';
+          } else {
+            msg = error.message;
+          }
+          showError('error-message', msg);
+          return;
+        }
+
+        if (data.user) {
+          // Actualizar el teléfono en el perfil (el trigger crea el perfil con name y role)
+          await supabaseClient
+            .from('profiles')
+            .update({ phone })
+            .eq('id', data.user.id);
+
+          // Mostrar pantalla de éxito
+          showSuccess(email);
+        }
+
+      } catch (err) {
+        showError('error-message', 'Error inesperado. Intenta de nuevo.');
+        console.error(err);
+      } finally {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Crear cuenta';
+        btnSpinner.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

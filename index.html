@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RENTO - Renta de Casas y Apartamentos en Honduras</title>
+  <meta name="description" content="Encuentra tu hogar ideal en Honduras. Plataforma de renta mensual de casas y apartamentos en Choloma, San Pedro Sula y más.">
+  
+  <link rel="stylesheet" href="css/styles.css">
+  
+  <!-- Supabase desde CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <!-- HEADER (se inyecta automáticamente) -->
+  <div id="header-slot"></div>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-content animate-fade-in">
+        <h1 class="hero-title">
+          Encuentra tu hogar ideal en
+          <span class="hero-title-accent">Honduras</span>
+        </h1>
+        <p class="hero-subtitle">
+          Conectamos dueños y rentadores de forma segura. Casas y apartamentos verificados en Choloma, San Pedro Sula y más.
+        </p>
+        
+        <div class="hero-buttons">
+          <a href="propiedades.html" class="btn btn-large" style="background:white;color:var(--primary);">
+            <i data-lucide="search" style="width:20px;height:20px"></i>
+            Buscar propiedades
+          </a>
+          <a href="registro.html?role=owner" class="btn btn-large" style="background:transparent;color:white;border-color:white">
+            Publicar mi propiedad
+          </a>
+        </div>
+
+        <div class="hero-stats">
+          <div>
+            <span class="hero-stat-number">100%</span>
+            <span class="hero-stat-label">Verificado</span>
+          </div>
+          <div>
+            <span class="hero-stat-number">2</span>
+            <span class="hero-stat-label">Ciudades activas</span>
+          </div>
+          <div>
+            <span class="hero-stat-number">0%</span>
+            <span class="hero-stat-label">Comisión inicial</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="section">
+      <div class="section-container">
+        <h2 class="section-title">¿Por qué elegir RENTO?</h2>
+        <p class="section-subtitle">La forma más segura y fácil de rentar en Honduras</p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-primary">
+              <i data-lucide="shield-check" style="width:32px;height:32px"></i>
+            </div>
+            <h3 class="feature-title">100% Verificado</h3>
+            <p class="feature-description">
+              Todos los dueños y propiedades pasan por un proceso riguroso de verificación.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-secondary">
+              <i data-lucide="home" style="width:32px;height:32px"></i>
+            </div>
+            <h3 class="feature-title">Renta Mensual</h3>
+            <p class="feature-description">
+              Diseñado para Honduras: contratos mensuales típicos del mercado local.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon feature-icon-accent">
+              <i data-lucide="message-circle" style="width:32px;height:32px"></i>
+            </div>
+            <h3 class="feature-title">Contacto Directo</h3>
+            <p class="feature-description">
+              Conecta directamente vía WhatsApp con dueños verificados.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+      <div class="section-container">
+        <h2 class="section-title">¿Listo para empezar?</h2>
+        <p class="section-subtitle">
+          Únete a la comunidad de RENTO y encuentra el hogar perfecto o publica tu propiedad para llegar a más personas.
+        </p>
+        <div class="cta-buttons">
+          <a href="registro.html?role=renter" class="btn btn-primary btn-large">Soy Rentador</a>
+          <a href="registro.html?role=owner" class="btn btn-secondary btn-large">Soy Dueño</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER (se inyecta automáticamente) -->
+  <div id="footer-slot"></div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    // Inicializar layout
+    initLayout();
+  </script>
+</body>
+</html>
