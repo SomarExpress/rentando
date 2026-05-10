@@ -6,8 +6,8 @@
 // ==========================================================
 
 const SUPABASE_CONFIG = {
-  url: 'https://TU-PROYECTO.supabase.co',
-  anonKey: 'TU-ANON-KEY-AQUI',
+  url: 'https://mmcdgfkyhvqznfnrxvmn.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1tY2RnZmt5aHZxem5mbnJ4dm1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMzE2MzQsImV4cCI6MjA5MzYwNzYzNH0.YvrOU0TS0l38iHzi3B4BIYCfz4_GiNgwFMXC_Fi6TUg',
 };
 
 // ==========================================================
