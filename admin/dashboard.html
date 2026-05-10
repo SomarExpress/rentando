@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Admin RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div class="admin-layout">
+    <div id="sidebar-slot"></div>
+    
+    <div class="admin-main">
+      <div id="topbar-slot"></div>
+      
+      <main class="admin-content">
+        <div id="page-content">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    (async function() {
+      const admin = await initAdminLayout('dashboard');
+      if (!admin) return;
+      
+      await loadDashboard();
+    })();
+
+    async function loadDashboard() {
+      try {
+        // Cargar métricas en paralelo
+        const [
+          usersResult,
+          ownersResult,
+          rentersResult,
+          pendingVerifsResult,
+          propertiesTotal,
+          propertiesActive,
+          propertiesPending,
+          requestsTotal,
+          requestsPending,
+        ] = await Promise.all([
+          supabaseClient.from('profiles').select('id', { count: 'exact', head: true }),
+          supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'owner'),
+          supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'renter'),
+          supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('verification_status', 'submitted'),
+          supabaseClient.from('properties').select('id', { count: 'exact', head: true }),
+          supabaseClient.from('properties').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+          supabaseClient.from('properties').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+          supabaseClient.from('contact_requests').select('id', { count: 'exact', head: true }),
+          supabaseClient.from('contact_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        ]);
+
+        // Cargar últimas verificaciones pendientes
+        const { data: pendingVerifications } = await supabaseClient
+          .from('profiles')
+          .select('id, email, full_name, role, created_at, verification_status')
+          .eq('verification_status', 'submitted')
+          .order('updated_at', { ascending: false })
+          .limit(5);
+
+        // Cargar últimas propiedades pendientes
+        const { data: pendingProperties } = await supabaseClient
+          .from('properties')
+          .select('id, title, city, neighborhood, price_lempiras, created_at, owner_id')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        renderDashboard({
+          users: usersResult.count || 0,
+          owners: ownersResult.count || 0,
+          renters: rentersResult.count || 0,
+          pendingVerifs: pendingVerifsResult.count || 0,
+          propertiesTotal: propertiesTotal.count || 0,
+          propertiesActive: propertiesActive.count || 0,
+          propertiesPending: propertiesPending.count || 0,
+          requestsTotal: requestsTotal.count || 0,
+          requestsPending: requestsPending.count || 0,
+          pendingVerifications: pendingVerifications || [],
+          pendingProperties: pendingProperties || [],
+        });
+      } catch (err) {
+        console.error('Error:', err);
+        document.getElementById('page-content').innerHTML = `
+          <div class="alert alert-error">
+            <i data-lucide="alert-circle"></i>
+            <div>Error al cargar dashboard: ${err.message}</div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+    }
+
+    function renderDashboard(data) {
+      document.getElementById('page-content').innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">Dashboard</h1>
+          <p class="page-subtitle">Vista general de RENTO</p>
+        </div>
+
+        <!-- Stats principales -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon stat-icon-primary">
+              <i data-lucide="users" style="width:22px;height:22px"></i>
+            </div>
+            <div class="stat-label">Usuarios totales</div>
+            <div class="stat-value">${data.users}</div>
+            <div class="stat-detail">${data.owners} dueños · ${data.renters} rentadores</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon stat-icon-orange">
+              <i data-lucide="shield-check" style="width:22px;height:22px"></i>
+            </div>
+            <div class="stat-label">Verificaciones pendientes</div>
+            <div class="stat-value">${data.pendingVerifs}</div>
+            <div class="stat-detail">
+              ${data.pendingVerifs > 0 ? 
+                `<a href="verificaciones.html" style="color:var(--primary);font-weight:600">Revisar ahora →</a>` : 
+                'Todo al día ✓'}
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon stat-icon-blue">
+              <i data-lucide="building-2" style="width:22px;height:22px"></i>
+            </div>
+            <div class="stat-label">Propiedades</div>
+            <div class="stat-value">${data.propertiesTotal}</div>
+            <div class="stat-detail">${data.propertiesActive} activas · ${data.propertiesPending} pendientes</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon stat-icon-green">
+              <i data-lucide="message-square" style="width:22px;height:22px"></i>
+            </div>
+            <div class="stat-label">Solicitudes de contacto</div>
+            <div class="stat-value">${data.requestsTotal}</div>
+            <div class="stat-detail">${data.requestsPending} pendientes</div>
+          </div>
+        </div>
+
+        <!-- Acciones pendientes -->
+        <div style="display:grid;grid-template-columns:1fr;gap:1.5rem;margin-bottom:1.5rem" id="actions-grid">
+          
+          <!-- Verificaciones pendientes -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i data-lucide="shield-check" style="width:18px;height:18px;display:inline;vertical-align:middle"></i>
+                Verificaciones pendientes
+              </div>
+              ${data.pendingVerifications.length > 0 ? `
+                <a href="verificaciones.html" class="btn btn-outline btn-sm">Ver todas</a>
+              ` : ''}
+            </div>
+            ${data.pendingVerifications.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">
+                  <i data-lucide="check-circle-2" style="width:32px;height:32px"></i>
+                </div>
+                <p>No hay verificaciones pendientes</p>
+              </div>
+            ` : `
+              <div class="table-wrapper">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Usuario</th>
+                      <th>Rol</th>
+                      <th>Fecha</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.pendingVerifications.map(p => `
+                      <tr>
+                        <td>
+                          <div style="font-weight:600">${p.full_name || 'Sin nombre'}</div>
+                          <div style="color:var(--text-light);font-size:0.8125rem">${p.email}</div>
+                        </td>
+                        <td><span class="badge badge-role-${p.role}">${ROLE_NAMES[p.role]}</span></td>
+                        <td style="color:var(--text-medium);font-size:0.875rem">${timeAgo(p.created_at)}</td>
+                        <td>
+                          <a href="verificaciones.html?id=${p.id}" class="btn btn-primary btn-sm">Revisar</a>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+
+          <!-- Propiedades pendientes -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i data-lucide="building-2" style="width:18px;height:18px;display:inline;vertical-align:middle"></i>
+                Propiedades pendientes
+              </div>
+              ${data.pendingProperties.length > 0 ? `
+                <a href="propiedades.html" class="btn btn-outline btn-sm">Ver todas</a>
+              ` : ''}
+            </div>
+            ${data.pendingProperties.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">
+                  <i data-lucide="check-circle-2" style="width:32px;height:32px"></i>
+                </div>
+                <p>No hay propiedades pendientes</p>
+              </div>
+            ` : `
+              <div class="table-wrapper">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Propiedad</th>
+                      <th>Ubicación</th>
+                      <th>Precio</th>
+                      <th>Fecha</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${data.pendingProperties.map(p => `
+                      <tr>
+                        <td>
+                          <div style="font-weight:600;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</div>
+                        </td>
+                        <td style="color:var(--text-medium);font-size:0.875rem">${p.neighborhood}, ${CITY_NAMES[p.city]}</td>
+                        <td style="font-weight:600;color:var(--primary)">${formatPrice(p.price_lempiras)}</td>
+                        <td style="color:var(--text-medium);font-size:0.875rem">${timeAgo(p.created_at)}</td>
+                        <td>
+                          <a href="propiedades.html?id=${p.id}" class="btn btn-primary btn-sm">Revisar</a>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+
+      lucide.createIcons();
+    }
+
+    // Hacer toggleSidebar global
+    window.toggleSidebar = toggleSidebar;
+    window.adminSignOut = adminSignOut;
+  </script>
+</body>
+</html>

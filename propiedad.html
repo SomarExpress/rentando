@@ -53,7 +53,7 @@
       const propertyId = params.get('id');
 
       if (!propertyId) {
-        showError('No se especificó la propiedad');
+        showFullPageError('No se especificó la propiedad');
         return;
       }
 
@@ -72,14 +72,14 @@
           .single();
 
         if (error || !prop) {
-          showError('Propiedad no encontrada');
+          showFullPageError('Propiedad no encontrada');
           return;
         }
 
         // Solo se muestra si está activa Y verificada, EXCEPTO si es el dueño
         const isOwner = currentUser?.user?.id === prop.owner_id;
         if (!isOwner && (prop.status !== 'active' || !prop.is_verified)) {
-          showError('Esta propiedad no está disponible');
+          showFullPageError('Esta propiedad no está disponible');
           return;
         }
 
@@ -114,11 +114,11 @@
         renderProperty();
       } catch (err) {
         console.error('Error:', err);
-        showError('Error al cargar: ' + err.message);
+        showFullPageError('Error al cargar: ' + err.message);
       }
     })();
 
-    function showError(msg) {
+    function showFullPageError(msg) {
       document.getElementById('page-content').innerHTML = `
         <div style="max-width:540px;margin:4rem auto" class="card card-padding" style="text-align:center">
           <div style="width:64px;height:64px;background:#FEE2E2;color:#DC2626;border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem">

@@ -32,7 +32,7 @@
     let ownershipFile = null;
     let utilityBillFile = null;
 
-    const AMENITIES_LIST = [
+    const PROPERTY_AMENITIES = [
       { id: 'wifi', label: 'WiFi', icon: 'wifi' },
       { id: 'ac', label: 'Aire acondicionado', icon: 'wind' },
       { id: 'kitchen', label: 'Cocina equipada', icon: 'utensils' },
@@ -302,7 +302,7 @@
 
       // Renderizar amenidades
       const amenitiesGrid = document.getElementById('amenities-grid');
-      amenitiesGrid.innerHTML = AMENITIES_LIST.map(am => `
+      amenitiesGrid.innerHTML = PROPERTY_AMENITIES.map(am => `
         <label style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.2s" 
                onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-50)'"
                onmouseout="if(!this.querySelector('input').checked){this.style.borderColor='var(--border)';this.style.background='white'}">

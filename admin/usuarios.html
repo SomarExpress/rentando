@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuarios - Admin RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div class="admin-layout">
+    <div id="sidebar-slot"></div>
+    
+    <div class="admin-main">
+      <div id="topbar-slot"></div>
+      
+      <main class="admin-content">
+        <div id="page-content">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    let currentAdmin = null;
+    let allUsers = [];
+    let currentFilter = { role: '', verification: '', search: '' };
+
+    (async function() {
+      currentAdmin = await initAdminLayout('usuarios');
+      if (!currentAdmin) return;
+      await renderPage();
+    })();
+
+    async function renderPage() {
+      document.getElementById('page-content').innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">Usuarios</h1>
+          <p class="page-subtitle">Todos los usuarios registrados en RENTO</p>
+        </div>
+
+        <div class="card card-padding" style="margin-bottom:1.5rem">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
+            <div class="input-group" style="margin-bottom:0">
+              <label class="input-label">Buscar</label>
+              <input type="text" id="filter-search" class="input-field" placeholder="Nombre o email">
+            </div>
+            <div class="input-group" style="margin-bottom:0">
+              <label class="input-label">Rol</label>
+              <select id="filter-role" class="input-field">
+                <option value="">Todos</option>
+                <option value="admin">Administrador</option>
+                <option value="owner">Dueño</option>
+                <option value="renter">Rentador</option>
+              </select>
+            </div>
+            <div class="input-group" style="margin-bottom:0">
+              <label class="input-label">Verificación</label>
+              <select id="filter-verification" class="input-field">
+                <option value="">Todos</option>
+                <option value="pending">Pendiente</option>
+                <option value="submitted">En revisión</option>
+                <option value="verified">Verificado</option>
+                <option value="rejected">Rechazado</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="list-container">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      `;
+      lucide.createIcons();
+
+      // Eventos de filtros
+      document.getElementById('filter-search').addEventListener('input', applyFilters);
+      document.getElementById('filter-role').addEventListener('change', applyFilters);
+      document.getElementById('filter-verification').addEventListener('change', applyFilters);
+
+      await loadUsers();
+    }
+
+    async function loadUsers() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        allUsers = data || [];
+        applyFilters();
+      } catch (err) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="alert alert-error">${err.message}</div>
+        `;
+      }
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('filter-search').value.toLowerCase().trim();
+      const role = document.getElementById('filter-role').value;
+      const verification = document.getElementById('filter-verification').value;
+
+      let filtered = allUsers;
+      if (search) {
+        filtered = filtered.filter(u => 
+          (u.full_name || '').toLowerCase().includes(search) ||
+          u.email.toLowerCase().includes(search)
+        );
+      }
+      if (role) filtered = filtered.filter(u => u.role === role);
+      if (verification) filtered = filtered.filter(u => u.verification_status === verification);
+
+      renderList(filtered);
+    }
+
+    function renderList(users) {
+      if (users.length === 0) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <i data-lucide="users" style="width:32px;height:32px"></i>
+              </div>
+              <p>No se encontraron usuarios con esos filtros</p>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      document.getElementById('list-container').innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">${users.length} usuario${users.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="table-wrapper">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Rol</th>
+                  <th>Verificación</th>
+                  <th>Teléfono</th>
+                  <th>Registrado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${users.map(u => `
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:0.75rem">
+                        <div class="admin-user-avatar" style="width:36px;height:36px;font-size:0.875rem">
+                          ${(u.full_name || u.email)[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div style="font-weight:600">${u.full_name || 'Sin nombre'}</div>
+                          <div style="color:var(--text-light);font-size:0.8125rem">${u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span class="badge badge-role-${u.role}">${ROLE_NAMES[u.role]}</span></td>
+                    <td>
+                      <span class="badge badge-${u.verification_status === 'verified' ? 'verified' : u.verification_status}">
+                        ${u.verification_status}
+                      </span>
+                    </td>
+                    <td>${u.phone || '—'}</td>
+                    <td style="color:var(--text-medium);font-size:0.875rem">${timeAgo(u.created_at)}</td>
+                    <td>
+                      <button onclick="openDetail('${u.id}')" class="btn btn-outline btn-sm">Ver</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    async function openDetail(userId) {
+      const { data: user } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!user) return showToast('Error al cargar usuario', 'error');
+
+      // Estadísticas del usuario
+      let propertiesCount = 0;
+      let requestsCount = 0;
+
+      if (user.role === 'owner') {
+        const { count } = await supabaseClient.from('properties').select('id', { count: 'exact', head: true }).eq('owner_id', userId);
+        propertiesCount = count || 0;
+      }
+      if (user.role === 'renter') {
+        const { count } = await supabaseClient.from('contact_requests').select('id', { count: 'exact', head: true }).eq('renter_id', userId);
+        requestsCount = count || 0;
+      }
+
+      const isSelf = userId === currentAdmin.profile.id;
+
+      const modal = document.createElement('div');
+      modal.id = 'detail-modal';
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal-content" onclick="event.stopPropagation()">
+          <div class="modal-header">
+            <div class="modal-title">${user.full_name || 'Usuario'}</div>
+            <button class="modal-close" onclick="closeDetail()">
+              <i data-lucide="x" style="width:20px;height:20px"></i>
+            </button>
+          </div>
+          
+          <div class="modal-body">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem">
+              <div class="admin-user-avatar" style="width:64px;height:64px;font-size:1.5rem">
+                ${(user.full_name || user.email)[0].toUpperCase()}
+              </div>
+              <div>
+                <div style="font-weight:700;font-size:1.125rem">${user.full_name || 'Sin nombre'}</div>
+                <div style="color:var(--text-medium)">${user.email}</div>
+                <div style="margin-top:0.25rem">
+                  <span class="badge badge-role-${user.role}">${ROLE_NAMES[user.role]}</span>
+                  <span class="badge badge-${user.verification_status === 'verified' ? 'verified' : user.verification_status}">${user.verification_status}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--bg-light);border-radius:8px;padding:1rem;margin-bottom:1.5rem">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem">
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">Teléfono</div>
+                  <div style="font-weight:500">${user.phone || '—'}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">DNI</div>
+                  <div style="font-weight:500;font-family:monospace">${user.dni_number || '—'}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">Registrado</div>
+                  <div style="font-weight:500">${formatDate(user.created_at)}</div>
+                </div>
+                ${user.verified_at ? `
+                  <div>
+                    <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">Verificado</div>
+                    <div style="font-weight:500">${formatDate(user.verified_at)}</div>
+                  </div>
+                ` : ''}
+                ${user.role === 'owner' ? `
+                  <div>
+                    <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">Propiedades</div>
+                    <div style="font-weight:500">${propertiesCount}</div>
+                  </div>
+                ` : ''}
+                ${user.role === 'renter' ? `
+                  <div>
+                    <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600">Solicitudes</div>
+                    <div style="font-weight:500">${requestsCount}</div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+
+            ${user.verification_notes ? `
+              <div class="alert alert-info">
+                <i data-lucide="message-square" style="width:18px;height:18px;flex-shrink:0;margin-top:2px"></i>
+                <div><strong>Notas:</strong> ${user.verification_notes}</div>
+              </div>
+            ` : ''}
+
+            ${!isSelf && user.role !== 'admin' ? `
+              <div style="margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+                <h3 style="font-weight:700;margin-bottom:0.75rem;font-size:0.9375rem">Acciones administrativas</h3>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                  ${user.verification_status === 'submitted' ? `
+                    <a href="verificaciones.html?id=${user.id}" class="btn btn-primary btn-sm">
+                      Revisar verificación
+                    </a>
+                  ` : ''}
+                  ${user.is_active !== false ? `
+                    <button onclick="suspendUser('${user.id}')" class="btn btn-danger btn-sm">
+                      Suspender usuario
+                    </button>
+                  ` : `
+                    <button onclick="reactivateUser('${user.id}')" class="btn btn-success btn-sm">
+                      Reactivar usuario
+                    </button>
+                  `}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="modal-footer">
+            <button onclick="closeDetail()" class="btn btn-outline">Cerrar</button>
+          </div>
+        </div>
+      `;
+
+      modal.addEventListener('click', closeDetail);
+      document.body.appendChild(modal);
+      lucide.createIcons();
+    }
+
+    function closeDetail() {
+      const modal = document.getElementById('detail-modal');
+      if (modal) modal.remove();
+    }
+
+    async function suspendUser(userId) {
+      if (!confirm('¿Suspender este usuario? No podrá iniciar sesión hasta que lo reactives.')) return;
+
+      try {
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({ is_active: false })
+          .eq('id', userId);
+
+        if (error) throw error;
+        await logAdminAction(currentAdmin.profile.id, 'suspend_user', 'user', userId);
+        showToast('Usuario suspendido');
+        closeDetail();
+        await loadUsers();
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function reactivateUser(userId) {
+      try {
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({ is_active: true })
+          .eq('id', userId);
+
+        if (error) throw error;
+        await logAdminAction(currentAdmin.profile.id, 'reactivate_user', 'user', userId);
+        showToast('Usuario reactivado');
+        closeDetail();
+        await loadUsers();
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    // Globales
+    window.toggleSidebar = toggleSidebar;
+    window.adminSignOut = adminSignOut;
+    window.openDetail = openDetail;
+    window.closeDetail = closeDetail;
+    window.suspendUser = suspendUser;
+    window.reactivateUser = reactivateUser;
+  </script>
+</body>
+</html>

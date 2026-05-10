@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <main class="login-page">
+    <div class="login-card">
+      
+      <div class="login-logo">
+        <div class="admin-logo-icon">
+          <i data-lucide="shield" style="width:24px;height:24px"></i>
+        </div>
+        <div>
+          <div class="admin-logo-text" style="color:var(--text-dark)">RENTO</div>
+          <div style="color:var(--text-light);font-size:0.8125rem">Admin Panel</div>
+        </div>
+      </div>
+
+      <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:0.25rem">Iniciar sesión</h1>
+      <p style="color:var(--text-medium);margin-bottom:1.5rem;font-size:0.9375rem">Solo administradores autorizados</p>
+
+      <div id="error-message" class="alert alert-error hidden"></div>
+
+      <form id="login-form">
+        <div class="input-group">
+          <label class="input-label">Email</label>
+          <input type="email" id="email" class="input-field" placeholder="admin@rento.hn" required>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Contraseña</label>
+          <input type="password" id="password" class="input-field" placeholder="••••••••" required>
+        </div>
+
+        <button type="submit" id="submit-btn" class="btn btn-primary btn-full">
+          <span id="btn-text">Acceder al panel</span>
+          <span id="btn-spinner" class="spinner spinner-small hidden" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span>
+        </button>
+      </form>
+
+      <p style="text-align:center;color:var(--text-light);font-size:0.8125rem;margin-top:1.5rem">
+        ¿No eres administrador? <a href="../index.html" style="color:var(--primary);font-weight:600">Volver a RENTO</a>
+      </p>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    lucide.createIcons();
+
+    // Si ya es admin, ir al dashboard
+    (async function() {
+      const admin = await getCurrentAdmin();
+      if (admin) {
+        window.location.href = 'dashboard.html';
+      }
+    })();
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError('error-message');
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      const submitBtn = document.getElementById('submit-btn');
+      const btnText = document.getElementById('btn-text');
+      const btnSpinner = document.getElementById('btn-spinner');
+
+      submitBtn.disabled = true;
+      btnText.textContent = 'Verificando...';
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        // 1. Iniciar sesión
+        const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+          email, password
+        });
+
+        if (authError) {
+          showError('error-message', authError.message.includes('Invalid') ? 'Email o contraseña incorrectos' : authError.message);
+          return;
+        }
+
+        // 2. Verificar que sea admin
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('role')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (!profile || profile.role !== 'admin') {
+          await supabaseClient.auth.signOut();
+          showError('error-message', 'Esta cuenta no tiene permisos de administrador');
+          return;
+        }
+
+        // 3. Acceso permitido
+        window.location.href = 'dashboard.html';
+
+      } catch (err) {
+        showError('error-message', 'Error inesperado: ' + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Acceder al panel';
+        btnSpinner.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

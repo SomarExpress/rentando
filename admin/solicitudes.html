@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solicitudes - Admin RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div class="admin-layout">
+    <div id="sidebar-slot"></div>
+    
+    <div class="admin-main">
+      <div id="topbar-slot"></div>
+      
+      <main class="admin-content">
+        <div id="page-content">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    let currentAdmin = null;
+    let currentTab = 'all';
+
+    (async function() {
+      currentAdmin = await initAdminLayout('solicitudes');
+      if (!currentAdmin) return;
+      await renderPage();
+    })();
+
+    async function renderPage() {
+      document.getElementById('page-content').innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">Solicitudes de contacto</h1>
+          <p class="page-subtitle">Vista general de todas las solicitudes</p>
+        </div>
+
+        <div class="tabs">
+          <button class="tab ${currentTab === 'all' ? 'active' : ''}" onclick="setTab('all')">Todas</button>
+          <button class="tab ${currentTab === 'pending' ? 'active' : ''}" onclick="setTab('pending')">Pendientes</button>
+          <button class="tab ${currentTab === 'accepted' ? 'active' : ''}" onclick="setTab('accepted')">Aceptadas</button>
+          <button class="tab ${currentTab === 'rejected' ? 'active' : ''}" onclick="setTab('rejected')">Rechazadas</button>
+        </div>
+
+        <div id="list-container">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      `;
+      lucide.createIcons();
+      await loadList();
+    }
+
+    async function loadList() {
+      try {
+        let query = supabaseClient
+          .from('contact_requests')
+          .select(`
+            *,
+            property:properties(id, title, city, neighborhood, price_lempiras, images, cover_image_index),
+            renter:profiles!contact_requests_renter_id_fkey(id, full_name, email, verification_status),
+            owner:profiles!contact_requests_owner_id_fkey(id, full_name, email)
+          `)
+          .order('created_at', { ascending: false });
+
+        if (currentTab !== 'all') {
+          query = query.eq('status', currentTab);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        renderList(data || []);
+      } catch (err) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="alert alert-error">${err.message}</div>
+        `;
+      }
+    }
+
+    function renderList(requests) {
+      if (requests.length === 0) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <i data-lucide="message-square" style="width:32px;height:32px"></i>
+              </div>
+              <p>No hay solicitudes en este estado</p>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      document.getElementById('list-container').innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">${requests.length} solicitud${requests.length !== 1 ? 'es' : ''}</div>
+          </div>
+          <div class="table-wrapper">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Propiedad</th>
+                  <th>Rentador</th>
+                  <th>Dueño</th>
+                  <th>Estado</th>
+                  <th>Mensaje</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${requests.map(r => {
+                  const cover = r.property?.images?.[r.property?.cover_image_index || 0];
+                  return `
+                    <tr>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:0.5rem">
+                          ${cover ? `
+                            <img src="${cover}" style="width:40px;height:40px;border-radius:6px;object-fit:cover" alt="">
+                          ` : `
+                            <div style="width:40px;height:40px;background:var(--bg-light);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-light)">
+                              <i data-lucide="home" style="width:16px;height:16px"></i>
+                            </div>
+                          `}
+                          <div style="min-width:0">
+                            <div style="font-weight:600;font-size:0.875rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.property?.title || 'N/A'}</div>
+                            <div style="color:var(--text-light);font-size:0.75rem">${r.property ? formatPrice(r.property.price_lempiras) : ''}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="font-weight:500;font-size:0.875rem">${r.renter?.full_name || '—'}</div>
+                        ${r.renter?.verification_status === 'verified' ? '<span class="badge badge-verified" style="font-size:0.6875rem;padding:1px 6px"><i data-lucide="check" style="width:9px;height:9px"></i>Verif.</span>' : ''}
+                      </td>
+                      <td style="font-size:0.875rem">${r.owner?.full_name || '—'}</td>
+                      <td><span class="badge badge-${r.status === 'accepted' ? 'active' : r.status}">${r.status}</span></td>
+                      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-medium);font-size:0.875rem" title="${(r.message || '').replace(/"/g, '&quot;')}">${r.message || '—'}</td>
+                      <td style="color:var(--text-medium);font-size:0.875rem">${timeAgo(r.created_at)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    async function setTab(tab) {
+      currentTab = tab;
+      await renderPage();
+    }
+
+    // Globales
+    window.toggleSidebar = toggleSidebar;
+    window.adminSignOut = adminSignOut;
+    window.setTab = setTab;
+  </script>
+</body>
+</html>

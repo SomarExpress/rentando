@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificaciones - Admin RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div class="admin-layout">
+    <div id="sidebar-slot"></div>
+    
+    <div class="admin-main">
+      <div id="topbar-slot"></div>
+      
+      <main class="admin-content">
+        <div id="page-content">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    let currentAdmin = null;
+    let currentTab = 'submitted';
+
+    (async function() {
+      currentAdmin = await initAdminLayout('verificaciones');
+      if (!currentAdmin) return;
+      
+      // Si viene con ?id=xxx abrir esa verificación directamente
+      const params = new URLSearchParams(window.location.search);
+      const targetId = params.get('id');
+      
+      await renderPage();
+      
+      if (targetId) {
+        setTimeout(() => openDetail(targetId), 200);
+      }
+    })();
+
+    async function renderPage() {
+      document.getElementById('page-content').innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">Verificaciones</h1>
+          <p class="page-subtitle">Revisa documentos de identidad de usuarios</p>
+        </div>
+
+        <div class="tabs">
+          <button class="tab ${currentTab === 'submitted' ? 'active' : ''}" onclick="setTab('submitted')">Pendientes</button>
+          <button class="tab ${currentTab === 'verified' ? 'active' : ''}" onclick="setTab('verified')">Aprobadas</button>
+          <button class="tab ${currentTab === 'rejected' ? 'active' : ''}" onclick="setTab('rejected')">Rechazadas</button>
+        </div>
+
+        <div id="list-container">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      `;
+      lucide.createIcons();
+      await loadList();
+    }
+
+    async function loadList() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('profiles')
+          .select('id, email, full_name, phone, role, dni_number, verification_status, verification_notes, created_at, updated_at, verified_at')
+          .eq('verification_status', currentTab)
+          .neq('role', 'admin')
+          .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+
+        renderList(data || []);
+      } catch (err) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="alert alert-error">${err.message}</div>
+        `;
+      }
+    }
+
+    function renderList(users) {
+      if (users.length === 0) {
+        document.getElementById('list-container').innerHTML = `
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <i data-lucide="${currentTab === 'submitted' ? 'check-circle-2' : 'inbox'}" style="width:32px;height:32px"></i>
+              </div>
+              <p>${currentTab === 'submitted' ? '¡Todo al día! No hay verificaciones pendientes' : 'No hay registros'}</p>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      document.getElementById('list-container').innerHTML = `
+        <div class="card">
+          <div class="table-wrapper">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Rol</th>
+                  <th>DNI</th>
+                  <th>Teléfono</th>
+                  <th>Fecha</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${users.map(u => `
+                  <tr>
+                    <td>
+                      <div style="font-weight:600">${u.full_name || 'Sin nombre'}</div>
+                      <div style="color:var(--text-light);font-size:0.8125rem">${u.email}</div>
+                    </td>
+                    <td><span class="badge badge-role-${u.role}">${ROLE_NAMES[u.role]}</span></td>
+                    <td style="font-family:monospace;font-size:0.8125rem">${u.dni_number || '—'}</td>
+                    <td>${u.phone || '—'}</td>
+                    <td style="color:var(--text-medium);font-size:0.875rem">${timeAgo(u.updated_at)}</td>
+                    <td>
+                      <button onclick="openDetail('${u.id}')" class="btn btn-primary btn-sm">
+                        ${currentTab === 'submitted' ? 'Revisar' : 'Ver'}
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    async function setTab(tab) {
+      currentTab = tab;
+      await renderPage();
+    }
+
+    async function openDetail(userId) {
+      // Cargar datos
+      const { data: profile, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error || !profile) {
+        showToast('Error al cargar usuario', 'error');
+        return;
+      }
+
+      // Generar URLs firmadas para los documentos privados
+      const dniFrontUrl = profile.dni_front_url ? await getSignedUrl(profile.dni_front_url) : null;
+      const dniBackUrl = profile.dni_back_url ? await getSignedUrl(profile.dni_back_url) : null;
+      const selfieUrl = profile.selfie_url ? await getSignedUrl(profile.selfie_url) : null;
+      const incomeUrl = profile.income_proof_url ? await getSignedUrl(profile.income_proof_url) : null;
+
+      const isPdf = (path) => path && path.toLowerCase().endsWith('.pdf');
+
+      const modal = document.createElement('div');
+      modal.id = 'detail-modal';
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal-content" onclick="event.stopPropagation()">
+          <div class="modal-header">
+            <div class="modal-title">Verificación de ${profile.full_name || profile.email}</div>
+            <button class="modal-close" onclick="closeDetail()">
+              <i data-lucide="x" style="width:20px;height:20px"></i>
+            </button>
+          </div>
+          
+          <div class="modal-body">
+            <!-- Info del usuario -->
+            <div style="background:var(--bg-light);border-radius:8px;padding:1rem;margin-bottom:1.5rem">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">Email</div>
+                  <div style="font-weight:500">${profile.email}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">Teléfono</div>
+                  <div style="font-weight:500">${profile.phone || '—'}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">Rol</div>
+                  <div><span class="badge badge-role-${profile.role}">${ROLE_NAMES[profile.role]}</span></div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">DNI</div>
+                  <div style="font-family:monospace;font-weight:500">${profile.dni_number || '—'}</div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">Estado</div>
+                  <div><span class="badge badge-${profile.verification_status}">${profile.verification_status}</span></div>
+                </div>
+                <div>
+                  <div style="color:var(--text-light);font-size:0.75rem;text-transform:uppercase;font-weight:600;margin-bottom:0.25rem">Registrado</div>
+                  <div style="font-weight:500">${formatDate(profile.created_at)}</div>
+                </div>
+              </div>
+            </div>
+
+            ${profile.verification_notes ? `
+              <div class="alert alert-warning" style="margin-bottom:1rem">
+                <i data-lucide="message-square" style="width:18px;height:18px;flex-shrink:0;margin-top:2px"></i>
+                <div><strong>Notas anteriores:</strong> ${profile.verification_notes}</div>
+              </div>
+            ` : ''}
+
+            <!-- Documentos -->
+            <h3 style="font-weight:700;margin-bottom:1rem;font-size:1rem">Documentos subidos</h3>
+            <div class="doc-grid">
+              ${dniFrontUrl ? `
+                <div class="doc-item">
+                  <img src="${dniFrontUrl}" class="doc-image" alt="DNI frente" onclick="window.open('${dniFrontUrl}','_blank')">
+                  <div class="doc-label">DNI - Frente</div>
+                </div>
+              ` : '<div class="alert alert-warning">No subió DNI frente</div>'}
+              
+              ${dniBackUrl ? `
+                <div class="doc-item">
+                  <img src="${dniBackUrl}" class="doc-image" alt="DNI reverso" onclick="window.open('${dniBackUrl}','_blank')">
+                  <div class="doc-label">DNI - Reverso</div>
+                </div>
+              ` : '<div class="alert alert-warning">No subió DNI reverso</div>'}
+              
+              ${selfieUrl ? `
+                <div class="doc-item">
+                  <img src="${selfieUrl}" class="doc-image" alt="Selfie" onclick="window.open('${selfieUrl}','_blank')">
+                  <div class="doc-label">Selfie con DNI</div>
+                </div>
+              ` : '<div class="alert alert-warning">No subió selfie</div>'}
+              
+              ${incomeUrl ? (isPdf(profile.income_proof_url) ? `
+                <div class="doc-item">
+                  <div style="aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;background:var(--primary-50);color:var(--primary);cursor:pointer" onclick="window.open('${incomeUrl}','_blank')">
+                    <div style="text-align:center">
+                      <i data-lucide="file-text" style="width:48px;height:48px"></i>
+                      <div style="font-size:0.8125rem;margin-top:0.5rem;font-weight:600">Click para abrir PDF</div>
+                    </div>
+                  </div>
+                  <div class="doc-label">Comprobante de ingresos</div>
+                </div>
+              ` : `
+                <div class="doc-item">
+                  <img src="${incomeUrl}" class="doc-image" alt="Ingresos" onclick="window.open('${incomeUrl}','_blank')">
+                  <div class="doc-label">Comprobante de ingresos</div>
+                </div>
+              `) : ''}
+            </div>
+
+            ${profile.verification_status === 'submitted' ? `
+              <div style="margin-top:1.5rem">
+                <h3 style="font-weight:700;margin-bottom:0.75rem;font-size:1rem">Decisión</h3>
+                <div class="input-group">
+                  <label class="input-label">Notas (opcional, visible al usuario si rechazas)</label>
+                  <textarea id="admin-notes" class="input-field" rows="3" placeholder="Ej: La foto del DNI no es clara, por favor sube una nueva..."></textarea>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="modal-footer">
+            ${profile.verification_status === 'submitted' ? `
+              <button onclick="closeDetail()" class="btn btn-outline">Cancelar</button>
+              <button onclick="rejectVerification('${profile.id}')" class="btn btn-danger">
+                <i data-lucide="x-circle" style="width:16px;height:16px"></i>
+                Rechazar
+              </button>
+              <button onclick="approveVerification('${profile.id}')" class="btn btn-success">
+                <i data-lucide="check-circle-2" style="width:16px;height:16px"></i>
+                Aprobar
+              </button>
+            ` : `
+              <button onclick="closeDetail()" class="btn btn-outline">Cerrar</button>
+              ${profile.verification_status !== 'submitted' ? `
+                <button onclick="reopenVerification('${profile.id}')" class="btn btn-outline">
+                  <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
+                  Marcar para revisar de nuevo
+                </button>
+              ` : ''}
+            `}
+          </div>
+        </div>
+      `;
+
+      modal.addEventListener('click', closeDetail);
+      document.body.appendChild(modal);
+      lucide.createIcons();
+    }
+
+    function closeDetail() {
+      const modal = document.getElementById('detail-modal');
+      if (modal) modal.remove();
+    }
+
+    async function approveVerification(userId) {
+      if (!confirm('¿Aprobar la verificación de este usuario?')) return;
+
+      const notes = document.getElementById('admin-notes')?.value.trim() || null;
+
+      try {
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({
+            verification_status: 'verified',
+            verification_notes: notes,
+            verified_at: new Date().toISOString(),
+            verified_by: currentAdmin.profile.id,
+          })
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        await logAdminAction(currentAdmin.profile.id, 'verify_user', 'user', userId, { notes });
+
+        showToast('Usuario verificado correctamente');
+        closeDetail();
+        await loadList();
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function rejectVerification(userId) {
+      const notes = document.getElementById('admin-notes')?.value.trim();
+      
+      if (!notes) {
+        alert('Por favor escribe una razón para el rechazo (visible al usuario)');
+        return;
+      }
+
+      if (!confirm('¿Rechazar la verificación de este usuario?')) return;
+
+      try {
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({
+            verification_status: 'rejected',
+            verification_notes: notes,
+            verified_by: currentAdmin.profile.id,
+          })
+          .eq('id', userId);
+
+        if (error) throw error;
+
+        await logAdminAction(currentAdmin.profile.id, 'reject_user', 'user', userId, { notes });
+
+        showToast('Verificación rechazada');
+        closeDetail();
+        await loadList();
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function reopenVerification(userId) {
+      if (!confirm('¿Marcar para revisión de nuevo? El usuario tendrá que subir documentos otra vez.')) return;
+
+      try {
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({ verification_status: 'pending' })
+          .eq('id', userId);
+
+        if (error) throw error;
+        showToast('Verificación reabierta');
+        closeDetail();
+        await loadList();
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    // Globales
+    window.toggleSidebar = toggleSidebar;
+    window.adminSignOut = adminSignOut;
+    window.setTab = setTab;
+    window.openDetail = openDetail;
+    window.closeDetail = closeDetail;
+    window.approveVerification = approveVerification;
+    window.rejectVerification = rejectVerification;
+    window.reopenVerification = reopenVerification;
+  </script>
+</body>
+</html>
