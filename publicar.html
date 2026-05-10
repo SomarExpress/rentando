@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publicar propiedad - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      <div id="page-content">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script>
+    let currentProfile = null;
+    let propertyImages = [];
+    let ownershipFile = null;
+    let utilityBillFile = null;
+
+    const AMENITIES_LIST = [
+      { id: 'wifi', label: 'WiFi', icon: 'wifi' },
+      { id: 'ac', label: 'Aire acondicionado', icon: 'wind' },
+      { id: 'kitchen', label: 'Cocina equipada', icon: 'utensils' },
+      { id: 'parking', label: 'Estacionamiento', icon: 'car' },
+      { id: 'security', label: 'Seguridad 24/7', icon: 'shield' },
+      { id: 'pool', label: 'Piscina', icon: 'waves' },
+      { id: 'gym', label: 'Gimnasio', icon: 'dumbbell' },
+      { id: 'laundry', label: 'Lavandería', icon: 'shirt' },
+      { id: 'tv', label: 'TV Cable', icon: 'tv' },
+      { id: 'water', label: 'Agua incluida', icon: 'droplet' },
+      { id: 'electricity', label: 'Luz incluida', icon: 'zap' },
+      { id: 'garden', label: 'Jardín', icon: 'trees' },
+    ];
+
+    (async function() {
+      const result = await requireAuth();
+      if (!result) return;
+
+      currentProfile = result.profile;
+      await initLayout();
+
+      // Validar que sea owner
+      if (currentProfile.role !== 'owner') {
+        document.getElementById('page-content').innerHTML = `
+          <div style="max-width:540px;margin:4rem auto" class="card card-padding" style="text-align:center">
+            <h2>Acceso denegado</h2>
+            <p style="color:var(--text-medium);margin:1rem 0">Solo los dueños pueden publicar propiedades.</p>
+            <a href="dashboard.html" class="btn btn-primary">Volver al panel</a>
+          </div>
+        `;
+        return;
+      }
+
+      // Validar que esté verificado
+      if (currentProfile.verification_status !== 'verified') {
+        document.getElementById('page-content').innerHTML = `
+          <div style="max-width:640px;margin:2rem auto" class="animate-fade-in">
+            <div class="card card-padding" style="text-align:center;border-color:#FED7AA;background:#FFF7ED">
+              <div style="width:80px;height:80px;background:#FFEDD5;color:#EA580C;border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+                <i data-lucide="alert-circle" style="width:40px;height:40px"></i>
+              </div>
+              <h1 style="font-size:1.75rem;color:#EA580C;margin-bottom:0.75rem">Verificación requerida</h1>
+              <p style="color:var(--text-medium);margin-bottom:1.5rem">
+                Necesitas verificar tu identidad antes de poder publicar propiedades.
+              </p>
+              <a href="verificacion.html" class="btn btn-primary">Verificar mi cuenta</a>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      renderForm();
+    })();
+
+    function renderForm() {
+      document.getElementById('page-content').innerHTML = `
+        <div style="max-width:840px;margin:0 auto" class="animate-fade-in">
+          <div class="dashboard-header">
+            <h1 class="dashboard-greeting">Publicar propiedad</h1>
+            <p class="dashboard-subtitle">
+              Completa los datos. Después de revisar, tu propiedad aparecerá en RENTO.
+            </p>
+          </div>
+
+          <div id="error-message" class="alert alert-error hidden"></div>
+
+          <form id="property-form">
+            
+            <!-- Información básica -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:1rem">
+                <i data-lucide="info" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Información básica
+              </h3>
+              
+              <div class="input-group">
+                <label class="input-label">Título de la propiedad</label>
+                <input type="text" id="title" class="input-field" placeholder="Ej: Casa moderna en Choloma con jardín" maxlength="120" required>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Descripción</label>
+                <textarea id="description" class="input-field" rows="4" placeholder="Describe tu propiedad: ubicación, características, qué la hace especial..." maxlength="2000" required></textarea>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div class="input-group">
+                  <label class="input-label">Tipo de propiedad</label>
+                  <select id="property-type" class="input-field" required>
+                    <option value="">Selecciona...</option>
+                    <option value="house">Casa</option>
+                    <option value="apartment">Apartamento</option>
+                    <option value="studio">Estudio</option>
+                    <option value="room">Habitación</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Ciudad</label>
+                  <select id="city" class="input-field" required>
+                    <option value="">Selecciona...</option>
+                    <option value="choloma">Choloma</option>
+                    <option value="sps">San Pedro Sula</option>
+                    <option value="tegucigalpa">Tegucigalpa</option>
+                    <option value="la_ceiba">La Ceiba</option>
+                    <option value="comayagua">Comayagua</option>
+                    <option value="tela">Tela</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Colonia / Barrio</label>
+                <input type="text" id="neighborhood" class="input-field" placeholder="Ej: Residencial Las Brisas" required>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Dirección completa</label>
+                <input type="text" id="address" class="input-field" placeholder="Calle, número, casa..." required>
+                <small style="color:var(--text-light);display:block;margin-top:0.5rem">
+                  <i data-lucide="lock" style="width:14px;height:14px;display:inline;vertical-align:middle"></i>
+                  Esta dirección NO se mostrará públicamente
+                </small>
+              </div>
+
+              <div class="input-group" style="margin-bottom:0">
+                <label class="input-label">Punto de referencia <span style="color:var(--text-light);font-weight:400">(opcional)</span></label>
+                <input type="text" id="reference-point" class="input-field" placeholder="Ej: Cerca de centro comercial X">
+              </div>
+            </div>
+
+            <!-- Detalles -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:1rem">
+                <i data-lucide="home" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Detalles
+              </h3>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem">
+                <div class="input-group">
+                  <label class="input-label">Habitaciones</label>
+                  <input type="number" id="bedrooms" class="input-field" min="0" max="20" placeholder="3" required>
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Baños</label>
+                  <input type="number" id="bathrooms" class="input-field" min="0" max="20" step="0.5" placeholder="2" required>
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Área (m²)</label>
+                  <input type="number" id="area" class="input-field" min="0" placeholder="120">
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Estacionamientos</label>
+                  <input type="number" id="parking" class="input-field" min="0" max="20" placeholder="1" value="0">
+                </div>
+              </div>
+
+              <div style="display:flex;gap:2rem;flex-wrap:wrap;margin-top:0.5rem">
+                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+                  <input type="checkbox" id="furnished" style="width:18px;height:18px;accent-color:var(--primary)">
+                  <span>Amueblada</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+                  <input type="checkbox" id="pets-allowed" style="width:18px;height:18px;accent-color:var(--primary)">
+                  <span>Acepta mascotas</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Precio -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:1rem">
+                <i data-lucide="dollar-sign" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Precio y condiciones
+              </h3>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div class="input-group">
+                  <label class="input-label">Precio mensual (Lempiras)</label>
+                  <input type="number" id="price" class="input-field" min="1" placeholder="12000" required>
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Depósito (Lempiras)</label>
+                  <input type="number" id="deposit" class="input-field" min="0" placeholder="12000">
+                </div>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label">Mínimo de meses</label>
+                <input type="number" id="minimum-months" class="input-field" min="1" max="24" value="6" required>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">
+                <input type="checkbox" id="utilities-included" style="width:18px;height:18px;accent-color:var(--primary)">
+                <label for="utilities-included">Incluye servicios (luz, agua)</label>
+              </div>
+
+              <div class="input-group" id="utilities-details-group" style="margin-bottom:0;display:none">
+                <label class="input-label">Detalles de servicios</label>
+                <input type="text" id="utilities-details" class="input-field" placeholder="Ej: Incluye agua y luz hasta 1500 Lps">
+              </div>
+            </div>
+
+            <!-- Amenidades -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:1rem">
+                <i data-lucide="sparkles" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Amenidades
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Selecciona todas las que apliquen:
+              </p>
+              <div id="amenities-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.5rem"></div>
+            </div>
+
+            <!-- Imágenes -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="camera" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Fotos de la propiedad
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Sube entre 5 y 10 fotos. La primera será la portada.
+              </p>
+              
+              <input type="file" id="images-input" accept="image/*" multiple style="display:none">
+              <button type="button" class="btn btn-outline" onclick="document.getElementById('images-input').click()">
+                <i data-lucide="image-plus" style="width:18px;height:18px"></i>
+                Agregar fotos
+              </button>
+              <span id="images-count" style="margin-left:1rem;color:var(--text-medium);font-size:0.9375rem">0 fotos</span>
+              
+              <div id="images-preview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.75rem;margin-top:1rem"></div>
+            </div>
+
+            <!-- Documentos -->
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="file-text" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Documentos de propiedad
+                <span style="background:var(--bg-cream);color:var(--text-light);font-size:0.75rem;padding:2px 8px;border-radius:6px;margin-left:0.5rem;font-weight:500">Opcional pero recomendado</span>
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Sube uno de estos para acelerar la aprobación:
+              </p>
+              <ul style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem;padding-left:1.5rem">
+                <li>Escritura de la propiedad</li>
+                <li>O un recibo de servicio (luz/agua) a tu nombre</li>
+              </ul>
+              <div id="ownership-upload"></div>
+            </div>
+
+            <button type="submit" id="submit-btn" class="btn btn-primary btn-large" style="width:100%">
+              <span id="btn-text">Publicar propiedad</span>
+              <span id="btn-spinner" class="spinner spinner-small hidden" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span>
+            </button>
+
+            <p style="text-align:center;color:var(--text-light);font-size:0.875rem;margin-top:1rem">
+              Tu propiedad será revisada en 24-48 horas antes de aparecer públicamente
+            </p>
+          </form>
+        </div>
+      `;
+
+      lucide.createIcons();
+
+      // Renderizar amenidades
+      const amenitiesGrid = document.getElementById('amenities-grid');
+      amenitiesGrid.innerHTML = AMENITIES_LIST.map(am => `
+        <label style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.2s" 
+               onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-50)'"
+               onmouseout="if(!this.querySelector('input').checked){this.style.borderColor='var(--border)';this.style.background='white'}">
+          <input type="checkbox" name="amenity" value="${am.id}" 
+                 onchange="this.closest('label').style.background=this.checked?'var(--primary-50)':'white';this.closest('label').style.borderColor=this.checked?'var(--primary)':'var(--border)'"
+                 style="width:18px;height:18px;accent-color:var(--primary)">
+          <i data-lucide="${am.icon}" style="width:18px;height:18px"></i>
+          <span style="font-size:0.9375rem">${am.label}</span>
+        </label>
+      `).join('');
+
+      lucide.createIcons();
+
+      // Toggle utilities details
+      document.getElementById('utilities-included').addEventListener('change', (e) => {
+        document.getElementById('utilities-details-group').style.display = e.target.checked ? 'block' : 'none';
+      });
+
+      // Setup images
+      document.getElementById('images-input').addEventListener('change', handleImagesSelect);
+
+      // Setup ownership doc
+      setupFileUpload('ownership-upload', (file) => { ownershipFile = file; }, {
+        label: 'Click para subir documento',
+        hint: 'JPG, PNG, WEBP o PDF (máx 10MB)',
+        maxSizeMB: 10,
+        accept: 'image/*,application/pdf',
+        isDocument: true
+      });
+
+      // Form submit
+      document.getElementById('property-form').addEventListener('submit', handleSubmit);
+    }
+
+    function handleImagesSelect(e) {
+      const files = Array.from(e.target.files);
+      
+      for (const file of files) {
+        if (propertyImages.length >= 10) {
+          alert('Máximo 10 fotos');
+          break;
+        }
+        const validation = validateImageFile(file, 5);
+        if (!validation.valid) {
+          alert(validation.error);
+          continue;
+        }
+        propertyImages.push(file);
+      }
+
+      e.target.value = '';
+      renderImagesPreview();
+    }
+
+    function renderImagesPreview() {
+      document.getElementById('images-count').textContent = `${propertyImages.length} foto${propertyImages.length !== 1 ? 's' : ''}`;
+
+      const preview = document.getElementById('images-preview');
+      
+      if (propertyImages.length === 0) {
+        preview.innerHTML = '';
+        return;
+      }
+
+      preview.innerHTML = propertyImages.map((file, index) => {
+        return `
+          <div style="position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;border:2px solid ${index === 0 ? 'var(--primary)' : 'var(--border)'}" id="img-${index}">
+            <img src="" data-index="${index}" style="width:100%;height:100%;object-fit:cover" alt="">
+            ${index === 0 ? '<div style="position:absolute;top:0.5rem;left:0.5rem;background:var(--primary);color:white;padding:0.25rem 0.625rem;border-radius:50px;font-size:0.75rem;font-weight:600">Portada</div>' : ''}
+            <button type="button" onclick="removeImage(${index})" style="position:absolute;top:0.5rem;right:0.5rem;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,0.7);color:white;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer">
+              <i data-lucide="x" style="width:16px;height:16px"></i>
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      // Cargar las imágenes
+      propertyImages.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = preview.querySelector(`img[data-index="${index}"]`);
+          if (img) img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      lucide.createIcons();
+    }
+
+    function removeImage(index) {
+      propertyImages.splice(index, 1);
+      renderImagesPreview();
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      hideError('error-message');
+
+      // Validaciones
+      if (propertyImages.length < 5) {
+        showError('error-message', 'Debes subir al menos 5 fotos de la propiedad');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      const btnText = document.getElementById('btn-text');
+      const btnSpinner = document.getElementById('btn-spinner');
+
+      submitBtn.disabled = true;
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        // 1. Subir imágenes
+        btnText.textContent = `Subiendo imágenes (0/${propertyImages.length})...`;
+        const imageUrls = [];
+        
+        for (let i = 0; i < propertyImages.length; i++) {
+          btnText.textContent = `Subiendo imágenes (${i + 1}/${propertyImages.length})...`;
+          const result = await uploadFile('property-images', propertyImages[i], currentProfile.id);
+          if (!result.success) {
+            throw new Error('Error al subir imagen ' + (i + 1) + ': ' + result.error);
+          }
+          imageUrls.push(result.url);
+        }
+
+        // 2. Subir documento de propiedad si existe
+        let ownershipUrl = null;
+        if (ownershipFile) {
+          btnText.textContent = 'Subiendo documento...';
+          const result = await uploadFile('verification-docs', ownershipFile, currentProfile.id);
+          if (result.success) {
+            ownershipUrl = result.path;
+          }
+        }
+
+        // 3. Recolectar amenidades seleccionadas
+        const selectedAmenities = Array.from(
+          document.querySelectorAll('input[name="amenity"]:checked')
+        ).map(input => input.value);
+
+        // 4. Crear propiedad en la BD
+        btnText.textContent = 'Guardando propiedad...';
+
+        const propertyData = {
+          owner_id: currentProfile.id,
+          title: document.getElementById('title').value.trim(),
+          description: document.getElementById('description').value.trim(),
+          property_type: document.getElementById('property-type').value,
+          city: document.getElementById('city').value,
+          neighborhood: document.getElementById('neighborhood').value.trim(),
+          address: document.getElementById('address').value.trim(),
+          reference_point: document.getElementById('reference-point').value.trim() || null,
+          bedrooms: parseInt(document.getElementById('bedrooms').value),
+          bathrooms: parseFloat(document.getElementById('bathrooms').value),
+          area_m2: parseInt(document.getElementById('area').value) || null,
+          parking_spaces: parseInt(document.getElementById('parking').value) || 0,
+          furnished: document.getElementById('furnished').checked,
+          pets_allowed: document.getElementById('pets-allowed').checked,
+          price_lempiras: parseInt(document.getElementById('price').value),
+          deposit_amount: parseInt(document.getElementById('deposit').value) || 0,
+          utilities_included: document.getElementById('utilities-included').checked,
+          utilities_details: document.getElementById('utilities-details').value.trim() || null,
+          minimum_months: parseInt(document.getElementById('minimum-months').value),
+          images: imageUrls,
+          cover_image_index: 0,
+          amenities: selectedAmenities,
+          ownership_document_url: ownershipUrl,
+          status: 'pending',
+        };
+
+        const { data, error } = await supabaseClient
+          .from('properties')
+          .insert(propertyData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error('Error al guardar: ' + error.message);
+        }
+
+        // Éxito - redirigir a mis propiedades
+        window.location.href = 'mis-propiedades.html?published=1';
+
+      } catch (err) {
+        console.error('Error:', err);
+        showError('error-message', err.message || 'Error inesperado. Intenta de nuevo.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        submitBtn.disabled = false;
+        btnText.textContent = 'Publicar propiedad';
+        btnSpinner.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

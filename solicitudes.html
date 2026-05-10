@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solicitudes - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      <div id="page-content">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script>
+    let currentProfile = null;
+
+    (async function() {
+      const result = await requireAuth();
+      if (!result) return;
+
+      currentProfile = result.profile;
+      await initLayout();
+
+      await loadRequests();
+    })();
+
+    async function loadRequests() {
+      const isOwner = currentProfile.role === 'owner';
+
+      try {
+        const filterColumn = isOwner ? 'owner_id' : 'renter_id';
+
+        const { data: requests, error } = await supabaseClient
+          .from('contact_requests')
+          .select(`
+            *,
+            property:properties(id, title, city, neighborhood, images, cover_image_index, price_lempiras),
+            renter:profiles!contact_requests_renter_id_fkey(id, full_name, phone, email, verification_status, income_verified),
+            owner:profiles!contact_requests_owner_id_fkey(id, full_name, phone, email)
+          `)
+          .eq(filterColumn, currentProfile.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        renderPage(requests || [], isOwner);
+      } catch (err) {
+        console.error('Error:', err);
+        document.getElementById('page-content').innerHTML = `
+          <div class="alert alert-error">
+            <i data-lucide="alert-circle"></i>
+            <div>Error al cargar solicitudes: ${err.message}</div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+    }
+
+    function renderPage(requests, isOwner) {
+      document.getElementById('page-content').innerHTML = `
+        <div class="animate-fade-in">
+          <div class="dashboard-header">
+            <h1 class="dashboard-greeting">${isOwner ? 'Solicitudes recibidas' : 'Mis solicitudes'}</h1>
+            <p class="dashboard-subtitle">
+              ${isOwner ? 'Solicitudes de contacto para tus propiedades' : 'Tus solicitudes de contacto a propiedades'}
+            </p>
+          </div>
+
+          ${requests.length === 0 ? renderEmptyState(isOwner) : renderRequestsList(requests, isOwner)}
+        </div>
+      `;
+
+      lucide.createIcons();
+    }
+
+    function renderEmptyState(isOwner) {
+      return `
+        <div style="max-width:540px;margin:3rem auto" class="card card-padding" style="text-align:center">
+          <div style="width:80px;height:80px;background:var(--bg-cream);color:var(--text-light);border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+            <i data-lucide="inbox" style="width:40px;height:40px"></i>
+          </div>
+          <h2 style="font-size:1.5rem;margin-bottom:0.75rem">
+            ${isOwner ? 'No tienes solicitudes aún' : 'No has enviado solicitudes'}
+          </h2>
+          <p style="color:var(--text-medium);margin-bottom:1.5rem">
+            ${isOwner 
+              ? 'Cuando alguien quiera contactarte para una de tus propiedades, aparecerá aquí.' 
+              : 'Explora propiedades y solicita contacto con sus dueños.'}
+          </p>
+          <a href="${isOwner ? 'mis-propiedades.html' : 'propiedades.html'}" class="btn btn-primary">
+            ${isOwner ? 'Ver mis propiedades' : 'Explorar propiedades'}
+          </a>
+        </div>
+      `;
+    }
+
+    function renderRequestsList(requests, isOwner) {
+      // Agrupar por estado
+      const pending = requests.filter(r => r.status === 'pending');
+      const accepted = requests.filter(r => r.status === 'accepted');
+      const rejected = requests.filter(r => r.status === 'rejected');
+
+      return `
+        ${pending.length > 0 ? `
+          <div style="margin-bottom:2rem">
+            <h2 style="font-size:1.25rem;margin-bottom:1rem;color:#EA580C">
+              <i data-lucide="clock" style="width:20px;height:20px;display:inline;vertical-align:middle"></i>
+              Pendientes (${pending.length})
+            </h2>
+            <div style="display:flex;flex-direction:column;gap:1rem">
+              ${pending.map(r => renderRequestCard(r, isOwner)).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${accepted.length > 0 ? `
+          <div style="margin-bottom:2rem">
+            <h2 style="font-size:1.25rem;margin-bottom:1rem;color:#059669">
+              <i data-lucide="check-circle-2" style="width:20px;height:20px;display:inline;vertical-align:middle"></i>
+              Aceptadas (${accepted.length})
+            </h2>
+            <div style="display:flex;flex-direction:column;gap:1rem">
+              ${accepted.map(r => renderRequestCard(r, isOwner)).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${rejected.length > 0 ? `
+          <div style="margin-bottom:2rem">
+            <h2 style="font-size:1.25rem;margin-bottom:1rem;color:#6B7280">
+              <i data-lucide="x-circle" style="width:20px;height:20px;display:inline;vertical-align:middle"></i>
+              Rechazadas (${rejected.length})
+            </h2>
+            <div style="display:flex;flex-direction:column;gap:1rem">
+              ${rejected.map(r => renderRequestCard(r, isOwner)).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderRequestCard(request, isOwner) {
+      const property = request.property;
+      const otherUser = isOwner ? request.renter : request.owner;
+      const cover = property?.images?.[property.cover_image_index || 0];
+
+      const date = new Date(request.created_at).toLocaleDateString('es-HN', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+
+      const moveDate = request.preferred_move_date 
+        ? new Date(request.preferred_move_date).toLocaleDateString('es-HN', { day: 'numeric', month: 'long', year: 'numeric' })
+        : null;
+
+      // Status badge
+      const statusBadge = {
+        pending: { label: 'Pendiente', color: '#EA580C', bg: '#FFEDD5' },
+        accepted: { label: 'Aceptada', color: '#059669', bg: '#D1FAE5' },
+        rejected: { label: 'Rechazada', color: '#DC2626', bg: '#FEE2E2' },
+        expired: { label: 'Expirada', color: '#6B7280', bg: '#F3F4F6' },
+      }[request.status];
+
+      return `
+        <div class="card card-padding">
+          <div style="display:grid;grid-template-columns:1fr;gap:1rem">
+            
+            <!-- Header con propiedad y status -->
+            <div style="display:flex;gap:1rem;align-items:flex-start">
+              ${cover ? `
+                <img src="${cover}" style="width:80px;height:80px;border-radius:12px;object-fit:cover;flex-shrink:0" alt="">
+              ` : `
+                <div style="width:80px;height:80px;background:var(--bg-cream);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-light)">
+                  <i data-lucide="home" style="width:32px;height:32px"></i>
+                </div>
+              `}
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap">
+                  <a href="propiedad.html?id=${property?.id}" style="font-weight:700;font-size:1.0625rem;color:var(--text-dark);text-decoration:none">
+                    ${property?.title || 'Propiedad'}
+                  </a>
+                  <span style="background:${statusBadge.bg};color:${statusBadge.color};padding:0.25rem 0.75rem;border-radius:50px;font-size:0.75rem;font-weight:600;white-space:nowrap">
+                    ${statusBadge.label}
+                  </span>
+                </div>
+                <div style="color:var(--text-medium);font-size:0.875rem;margin-top:0.25rem">
+                  ${property?.neighborhood}, ${CITY_NAMES[property?.city] || ''}
+                </div>
+                <div style="color:var(--primary);font-weight:700;font-size:0.9375rem;margin-top:0.25rem">
+                  ${property ? formatPrice(property.price_lempiras) + '/mes' : ''}
+                </div>
+              </div>
+            </div>
+
+            <!-- Info del otro usuario -->
+            <div style="padding:0.875rem 1rem;background:var(--bg-cream);border-radius:10px">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+                <i data-lucide="${isOwner ? 'user' : 'building-2'}" style="width:16px;height:16px;color:var(--text-medium)"></i>
+                <strong>${isOwner ? 'Solicitante' : 'Dueño'}:</strong> ${otherUser?.full_name || 'Usuario'}
+              </div>
+              ${isOwner && otherUser?.verification_status === 'verified' ? `
+                <div style="display:flex;align-items:center;gap:0.375rem;color:#059669;font-size:0.875rem;margin-top:0.25rem">
+                  <i data-lucide="badge-check" style="width:14px;height:14px"></i>
+                  Identidad verificada
+                </div>
+              ` : ''}
+              ${isOwner && otherUser?.income_verified ? `
+                <div style="display:flex;align-items:center;gap:0.375rem;color:#059669;font-size:0.875rem;margin-top:0.25rem">
+                  <i data-lucide="check-circle" style="width:14px;height:14px"></i>
+                  Ingresos verificados
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Mensaje -->
+            ${request.message ? `
+              <div>
+                <div style="color:var(--text-medium);font-size:0.875rem;margin-bottom:0.5rem">Mensaje:</div>
+                <div style="padding:0.875rem 1rem;background:white;border:1px solid var(--border-light);border-radius:10px;color:var(--text-dark);white-space:pre-line">
+                  ${request.message}
+                </div>
+              </div>
+            ` : ''}
+
+            ${moveDate ? `
+              <div style="display:flex;align-items:center;gap:0.5rem;color:var(--text-medium);font-size:0.9375rem">
+                <i data-lucide="calendar" style="width:16px;height:16px"></i>
+                <strong>Fecha tentativa de mudanza:</strong> ${moveDate}
+              </div>
+            ` : ''}
+
+            ${request.rejection_reason ? `
+              <div class="alert alert-error" style="margin:0;font-size:0.9375rem">
+                <i data-lucide="x-circle" style="width:18px;height:18px;flex-shrink:0;margin-top:2px"></i>
+                <div>
+                  <strong>Razón del rechazo:</strong><br>
+                  ${request.rejection_reason}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Acciones -->
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;padding-top:0.5rem;border-top:1px solid var(--border-light)">
+              <span style="color:var(--text-light);font-size:0.875rem;flex:1">
+                Recibida el ${date}
+              </span>
+              ${renderActions(request, isOwner, otherUser, property)}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderActions(request, isOwner, otherUser, property) {
+      // PENDING - Si es dueño puede aceptar/rechazar
+      if (request.status === 'pending' && isOwner) {
+        return `
+          <button onclick="rejectRequest('${request.id}')" class="btn btn-outline" style="padding:0.5rem 1rem;font-size:0.875rem;color:#DC2626;border-color:#FECACA">
+            Rechazar
+          </button>
+          <button onclick="acceptRequest('${request.id}', '${otherUser?.full_name?.replace(/'/g, "\\'")}')" class="btn btn-primary" style="padding:0.5rem 1rem;font-size:0.875rem">
+            Aceptar
+          </button>
+        `;
+      }
+
+      // PENDING - Si es rentador, puede cancelar
+      if (request.status === 'pending' && !isOwner) {
+        return `
+          <button onclick="cancelRequest('${request.id}')" class="btn btn-outline" style="padding:0.5rem 1rem;font-size:0.875rem;color:#DC2626;border-color:#FECACA">
+            Cancelar solicitud
+          </button>
+        `;
+      }
+
+      // ACCEPTED - Mostrar contacto WhatsApp
+      if (request.status === 'accepted' && otherUser?.phone) {
+        const message = isOwner 
+          ? `Hola ${otherUser.full_name?.split(' ')[0] || ''}, soy de RENTO. Acepté tu solicitud para "${property?.title}". ¿Cuándo te gustaría visitarla?`
+          : `Hola, vi tu propiedad "${property?.title}" en RENTO y aceptaste mi solicitud. ¿Cuándo podemos coordinar una visita?`;
+        
+        const whatsappUrl = getWhatsAppLink(otherUser.phone, message);
+        
+        return `
+          <a href="${whatsappUrl}" target="_blank" class="btn btn-primary" style="padding:0.5rem 1rem;font-size:0.875rem;background:#25D366;border-color:#25D366">
+            <i data-lucide="message-circle" style="width:16px;height:16px"></i>
+            WhatsApp
+          </a>
+        `;
+      }
+
+      return '';
+    }
+
+    async function acceptRequest(id, renterName) {
+      if (!confirm(`¿Aceptar solicitud de ${renterName}?\n\nAl aceptar, se compartirán los datos de contacto entre ambos.`)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabaseClient
+          .from('contact_requests')
+          .update({
+            status: 'accepted',
+            responded_at: new Date().toISOString(),
+            contact_revealed_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+        await loadRequests();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function rejectRequest(id) {
+      const reason = prompt('Razón del rechazo (opcional, se enviará al rentador):');
+      
+      if (reason === null) return; // Canceló
+
+      try {
+        const { error } = await supabaseClient
+          .from('contact_requests')
+          .update({
+            status: 'rejected',
+            rejection_reason: reason || null,
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+        await loadRequests();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function cancelRequest(id) {
+      if (!confirm('¿Cancelar esta solicitud?\n\nNo podrás volver a enviar otra para la misma propiedad.')) {
+        return;
+      }
+
+      try {
+        const { error } = await supabaseClient
+          .from('contact_requests')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        await loadRequests();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    // Hacer funciones accesibles globalmente
+    window.acceptRequest = acceptRequest;
+    window.rejectRequest = rejectRequest;
+    window.cancelRequest = cancelRequest;
+  </script>
+</body>
+</html>

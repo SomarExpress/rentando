@@ -15,7 +15,7 @@ const SUPABASE_CONFIG = {
 };
 
 // WhatsApp del negocio (para contacto)
-const WHATSAPP_BUSINESS = '+50492134486';
+const WHATSAPP_BUSINESS = '+50498765432';
 
 // URL del panel de admin (separado)
 const ADMIN_URL = 'admin/index.html';

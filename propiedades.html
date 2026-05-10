@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Propiedades - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      
+      <div class="dashboard-header" style="margin-bottom:2rem">
+        <h1 class="dashboard-greeting">Explorar propiedades</h1>
+        <p class="dashboard-subtitle">Encuentra el hogar perfecto en Honduras</p>
+      </div>
+
+      <!-- Filtros -->
+      <div class="card card-padding" style="margin-bottom:2rem">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;align-items:end">
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label" style="font-size:0.8125rem">Ciudad</label>
+            <select id="filter-city" class="input-field">
+              <option value="">Todas</option>
+              <option value="choloma">Choloma</option>
+              <option value="sps">San Pedro Sula</option>
+              <option value="tegucigalpa">Tegucigalpa</option>
+              <option value="la_ceiba">La Ceiba</option>
+              <option value="comayagua">Comayagua</option>
+              <option value="tela">Tela</option>
+            </select>
+          </div>
+
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label" style="font-size:0.8125rem">Tipo</label>
+            <select id="filter-type" class="input-field">
+              <option value="">Todos</option>
+              <option value="house">Casa</option>
+              <option value="apartment">Apartamento</option>
+              <option value="studio">Estudio</option>
+              <option value="room">Habitación</option>
+            </select>
+          </div>
+
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label" style="font-size:0.8125rem">Precio máx (L)</label>
+            <input type="number" id="filter-max-price" class="input-field" placeholder="Ej: 20000" min="0">
+          </div>
+
+          <div class="input-group" style="margin-bottom:0">
+            <label class="input-label" style="font-size:0.8125rem">Habitaciones</label>
+            <select id="filter-bedrooms" class="input-field">
+              <option value="">Cualquiera</option>
+              <option value="1">1+</option>
+              <option value="2">2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+            </select>
+          </div>
+
+          <button onclick="applyFilters()" class="btn btn-primary">
+            <i data-lucide="search" style="width:18px;height:18px"></i>
+            Buscar
+          </button>
+        </div>
+      </div>
+
+      <!-- Contador de resultados -->
+      <div id="results-count" style="margin-bottom:1.5rem;color:var(--text-medium)"></div>
+
+      <!-- Lista de propiedades -->
+      <div id="properties-list">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    let allProperties = [];
+
+    (async function() {
+      await initLayout();
+      await loadProperties();
+    })();
+
+    async function loadProperties() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('properties')
+          .select('id, title, city, neighborhood, bedrooms, bathrooms, area_m2, property_type, price_lempiras, images, cover_image_index, amenities, furnished, view_count')
+          .eq('status', 'active')
+          .eq('is_verified', true)
+          .order('published_at', { ascending: false });
+
+        if (error) throw error;
+
+        allProperties = data || [];
+        applyFilters();
+      } catch (err) {
+        console.error('Error:', err);
+        document.getElementById('properties-list').innerHTML = `
+          <div class="alert alert-error">
+            <i data-lucide="alert-circle"></i>
+            <div>Error al cargar propiedades: ${err.message}</div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+    }
+
+    function applyFilters() {
+      const city = document.getElementById('filter-city').value;
+      const type = document.getElementById('filter-type').value;
+      const maxPrice = parseInt(document.getElementById('filter-max-price').value) || null;
+      const minBedrooms = parseInt(document.getElementById('filter-bedrooms').value) || null;
+
+      let filtered = allProperties;
+
+      if (city) filtered = filtered.filter(p => p.city === city);
+      if (type) filtered = filtered.filter(p => p.property_type === type);
+      if (maxPrice) filtered = filtered.filter(p => p.price_lempiras <= maxPrice);
+      if (minBedrooms) filtered = filtered.filter(p => p.bedrooms >= minBedrooms);
+
+      renderResults(filtered);
+    }
+
+    function renderResults(properties) {
+      const countEl = document.getElementById('results-count');
+      countEl.textContent = `${properties.length} propiedade${properties.length !== 1 ? 's' : ''} encontrada${properties.length !== 1 ? 's' : ''}`;
+
+      const list = document.getElementById('properties-list');
+
+      if (properties.length === 0) {
+        list.innerHTML = `
+          <div style="max-width:540px;margin:3rem auto" class="card card-padding" style="text-align:center">
+            <div style="width:80px;height:80px;background:var(--bg-cream);color:var(--text-light);border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+              <i data-lucide="search-x" style="width:40px;height:40px"></i>
+            </div>
+            <h2 style="font-size:1.5rem;margin-bottom:0.75rem">No encontramos propiedades</h2>
+            <p style="color:var(--text-medium);margin-bottom:1.5rem">
+              Intenta con otros filtros o vuelve más tarde.
+            </p>
+            <button onclick="clearFilters()" class="btn btn-secondary">Limpiar filtros</button>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      list.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.5rem">
+          ${properties.map(p => renderPropertyCard(p)).join('')}
+        </div>
+      `;
+
+      lucide.createIcons();
+    }
+
+    function renderPropertyCard(property) {
+      const cover = property.images && property.images[property.cover_image_index || 0];
+
+      return `
+        <a href="propiedad.html?id=${property.id}" class="card card-hover" style="overflow:hidden;display:block;text-decoration:none;color:inherit">
+          <div style="position:relative;aspect-ratio:16/10;background:var(--bg-cream);overflow:hidden">
+            ${cover ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover;transition:transform 0.4s" alt="${property.title}">` : `
+              <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-light)">
+                <i data-lucide="image-off" style="width:48px;height:48px"></i>
+              </div>
+            `}
+            ${property.furnished ? `
+              <div style="position:absolute;top:0.75rem;left:0.75rem;background:var(--accent);color:white;padding:0.375rem 0.75rem;border-radius:50px;font-size:0.75rem;font-weight:600">
+                Amueblada
+              </div>
+            ` : ''}
+          </div>
+
+          <div style="padding:1.25rem">
+            <h3 style="font-family:'DM Sans',sans-serif;font-size:1.0625rem;font-weight:700;margin-bottom:0.5rem;line-height:1.4">
+              ${property.title}
+            </h3>
+            <div style="color:var(--text-medium);font-size:0.875rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.375rem">
+              <i data-lucide="map-pin" style="width:14px;height:14px"></i>
+              ${property.neighborhood}, ${CITY_NAMES[property.city]}
+            </div>
+            <div style="color:var(--text-light);font-size:0.875rem;margin-bottom:1rem;display:flex;gap:0.75rem;flex-wrap:wrap">
+              <span><i data-lucide="bed" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> ${property.bedrooms} hab</span>
+              <span>•</span>
+              <span><i data-lucide="droplet" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> ${property.bathrooms} baños</span>
+              ${property.area_m2 ? `<span>•</span><span><i data-lucide="square" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> ${property.area_m2} m²</span>` : ''}
+            </div>
+            <div style="display:flex;align-items:baseline;gap:0.25rem;padding-top:0.75rem;border-top:1px solid var(--border-light)">
+              <span style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:var(--primary)">
+                ${formatPrice(property.price_lempiras)}
+              </span>
+              <span style="color:var(--text-light);font-size:0.875rem">/mes</span>
+            </div>
+          </div>
+        </a>
+      `;
+    }
+
+    function clearFilters() {
+      document.getElementById('filter-city').value = '';
+      document.getElementById('filter-type').value = '';
+      document.getElementById('filter-max-price').value = '';
+      document.getElementById('filter-bedrooms').value = '';
+      applyFilters();
+    }
+
+    // Permitir buscar con Enter
+    document.querySelectorAll('input.input-field, select.input-field').forEach(el => {
+      el.addEventListener('change', applyFilters);
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyFilters();
+      });
+    });
+  </script>
+</body>
+</html>

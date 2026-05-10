@@ -273,3 +273,73 @@ const PROPERTY_TYPE_NAMES = {
   room: 'Habitación',
   studio: 'Estudio',
 };
+
+const STATUS_LABELS = {
+  pending: { label: 'En revisión', class: 'badge-pending', icon: 'clock' },
+  active: { label: 'Publicada', class: 'badge-active', icon: 'check-circle-2' },
+  rejected: { label: 'Rechazada', class: 'badge-rejected', icon: 'x-circle' },
+  paused: { label: 'Pausada', class: 'badge-paused', icon: 'pause-circle' },
+  rented: { label: 'Rentada', class: 'badge-rented', icon: 'home' },
+  archived: { label: 'Archivada', class: 'badge-paused', icon: 'archive' },
+};
+
+const AMENITIES_LIST = [
+  { id: 'wifi', label: 'WiFi incluido' },
+  { id: 'ac', label: 'Aire acondicionado' },
+  { id: 'kitchen', label: 'Cocina equipada' },
+  { id: 'parking', label: 'Estacionamiento' },
+  { id: 'security', label: 'Seguridad 24/7' },
+  { id: 'pool', label: 'Piscina' },
+  { id: 'gym', label: 'Gimnasio' },
+  { id: 'laundry', label: 'Lavandería' },
+  { id: 'water_tank', label: 'Cisterna de agua' },
+  { id: 'garden', label: 'Jardín' },
+  { id: 'balcony', label: 'Balcón' },
+  { id: 'cable_tv', label: 'TV por cable' },
+];
+
+// ==========================================================
+// FUNCIONES DE UPLOAD MOVIDAS A storage.js
+// ==========================================================
+// Las siguientes funciones están en storage.js:
+// - uploadFile, deleteFile
+// - validateImageFile, validateDocumentFile
+// - setupFileUpload, formatFileSize, getWhatsAppLink
+// ==========================================================
+
+// Mostrar toast/notificación temporal
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    padding: 1rem 1.5rem;
+    background: ${type === 'success' ? '#059669' : '#DC2626'};
+    color: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    font-weight: 500;
+    animation: slideUp 0.3s ease;
+    max-width: 400px;
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// Formatear fecha
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('es-HN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificación de identidad - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      <div id="page-content">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script>
+    let currentProfile = null;
+    let dniFrontFile = null;
+    let dniBackFile = null;
+    let selfieFile = null;
+    let incomeFile = null;
+
+    (async function() {
+      const result = await requireAuth();
+      if (!result) return;
+
+      currentProfile = result.profile;
+      await initLayout();
+      renderPage();
+    })();
+
+    function renderPage() {
+      const status = currentProfile.verification_status;
+
+      if (status === 'verified') {
+        renderVerifiedState();
+        return;
+      }
+      if (status === 'submitted') {
+        renderSubmittedState();
+        return;
+      }
+      renderForm(status === 'rejected');
+    }
+
+    function renderVerifiedState() {
+      document.getElementById('page-content').innerHTML = `
+        <div style="max-width:640px;margin:2rem auto" class="animate-fade-in">
+          <div class="card card-padding" style="text-align:center;border-color:#A7F3D0;background:#ECFDF5">
+            <div style="width:80px;height:80px;background:#D1FAE5;color:#059669;border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+              <i data-lucide="check-circle-2" style="width:40px;height:40px"></i>
+            </div>
+            <h1 style="font-size:1.75rem;color:#059669;margin-bottom:0.75rem">¡Cuenta verificada!</h1>
+            <p style="color:var(--text-medium);margin-bottom:1.5rem">
+              Tu identidad ha sido verificada exitosamente. Ya puedes usar todas las funciones de RENTO.
+            </p>
+            <a href="dashboard.html" class="btn btn-primary">Ir al panel</a>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderSubmittedState() {
+      document.getElementById('page-content').innerHTML = `
+        <div style="max-width:640px;margin:2rem auto" class="animate-fade-in">
+          <div class="card card-padding" style="text-align:center;border-color:#BFDBFE;background:#EFF6FF">
+            <div style="width:80px;height:80px;background:#DBEAFE;color:#2563EB;border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+              <i data-lucide="clock" style="width:40px;height:40px"></i>
+            </div>
+            <h1 style="font-size:1.75rem;color:#2563EB;margin-bottom:0.75rem">En revisión</h1>
+            <p style="color:var(--text-medium);margin-bottom:0.5rem">
+              Recibimos tus documentos. Nuestro equipo los revisará en las próximas <strong>24-48 horas</strong>.
+            </p>
+            <p style="color:var(--text-light);font-size:0.9375rem;margin-bottom:1.5rem">
+              Te notificaremos por email cuando tu cuenta sea aprobada.
+            </p>
+            <a href="dashboard.html" class="btn btn-secondary">Volver al panel</a>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderForm(wasRejected) {
+      const isRenter = currentProfile.role === 'renter';
+      
+      document.getElementById('page-content').innerHTML = `
+        <div style="max-width:720px;margin:0 auto" class="animate-fade-in">
+          <div class="dashboard-header">
+            <h1 class="dashboard-greeting">Verificación de identidad</h1>
+            <p class="dashboard-subtitle">
+              Necesitamos verificar tu identidad antes de poder usar la plataforma. Esto nos ayuda a mantener RENTO seguro para todos.
+            </p>
+          </div>
+
+          ${wasRejected ? `
+            <div class="alert alert-error" style="margin-bottom:1.5rem">
+              <i data-lucide="alert-circle" style="width:20px;height:20px;flex-shrink:0;margin-top:2px"></i>
+              <div>
+                <strong>Tu verificación fue rechazada.</strong>
+                ${currentProfile.verification_notes ? `<br>Razón: ${currentProfile.verification_notes}` : ''}
+                <br>Por favor sube documentos nuevos y claros.
+              </div>
+            </div>
+          ` : ''}
+
+          <div id="error-message" class="alert alert-error hidden"></div>
+
+          <div class="alert alert-info" style="margin-bottom:1.5rem">
+            <i data-lucide="info" style="width:20px;height:20px;flex-shrink:0;margin-top:2px"></i>
+            <div>
+              <strong>Tus documentos están seguros.</strong> Solo nuestro equipo de verificación los verá.
+            </div>
+          </div>
+
+          <form id="verification-form">
+            
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="credit-card" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Número de identidad
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Ingresa tu número de DNI/identidad sin guiones (13 dígitos)
+              </p>
+              <div class="input-group" style="margin-bottom:0">
+                <input type="text" id="dni-number" class="input-field" placeholder="0801199512345" pattern="[0-9]{13}" maxlength="13" required>
+              </div>
+            </div>
+
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="image" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Foto del frente del DNI
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Toma una foto clara del frente. Asegúrate que se vean todos los datos.
+              </p>
+              <div id="dni-front-upload"></div>
+            </div>
+
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="image" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Foto del reverso del DNI
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Toma una foto del reverso de tu identidad.
+              </p>
+              <div id="dni-back-upload"></div>
+            </div>
+
+            <div class="card card-padding" style="margin-bottom:1.5rem">
+              <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                <i data-lucide="camera" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                Selfie sosteniendo el DNI
+              </h3>
+              <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                Tómate una selfie sosteniendo tu DNI cerca de tu cara.
+              </p>
+              <div id="selfie-upload"></div>
+            </div>
+
+            ${isRenter ? `
+              <div class="card card-padding" style="margin-bottom:1.5rem">
+                <h3 style="font-family:'DM Sans',sans-serif;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem">
+                  <i data-lucide="file-text" style="width:20px;height:20px;display:inline;vertical-align:middle;margin-right:0.5rem"></i>
+                  Comprobante de ingresos
+                  <span style="background:var(--bg-cream);color:var(--text-light);font-size:0.75rem;padding:2px 8px;border-radius:6px;margin-left:0.5rem;font-weight:500">Opcional</span>
+                </h3>
+                <p style="color:var(--text-medium);font-size:0.9375rem;margin-bottom:1rem">
+                  Acelera la aprobación de tus solicitudes (constancia laboral, recibos de pago, etc.)
+                </p>
+                <div id="income-upload"></div>
+              </div>
+            ` : ''}
+
+            <button type="submit" id="submit-btn" class="btn btn-primary btn-large" style="width:100%">
+              <span id="btn-text">Enviar para verificación</span>
+              <span id="btn-spinner" class="spinner spinner-small hidden" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span>
+            </button>
+
+            <p style="text-align:center;color:var(--text-light);font-size:0.875rem;margin-top:1rem">
+              Recibirás una respuesta en 24-48 horas por email
+            </p>
+          </form>
+        </div>
+      `;
+
+      lucide.createIcons();
+
+      setupFileUpload('dni-front-upload', (file) => { dniFrontFile = file; }, {
+        label: 'Click o arrastra el frente del DNI',
+        hint: 'JPG, PNG o WEBP (máx 5MB)'
+      });
+
+      setupFileUpload('dni-back-upload', (file) => { dniBackFile = file; }, {
+        label: 'Click o arrastra el reverso del DNI',
+        hint: 'JPG, PNG o WEBP (máx 5MB)'
+      });
+
+      setupFileUpload('selfie-upload', (file) => { selfieFile = file; }, {
+        label: 'Click o arrastra tu selfie',
+        hint: 'JPG, PNG o WEBP (máx 5MB)'
+      });
+
+      if (isRenter) {
+        setupFileUpload('income-upload', (file) => { incomeFile = file; }, {
+          label: 'Click o arrastra el comprobante',
+          hint: 'JPG, PNG, WEBP o PDF (máx 10MB)',
+          maxSizeMB: 10,
+          accept: 'image/*,application/pdf',
+          isDocument: true
+        });
+      }
+
+      document.getElementById('verification-form').addEventListener('submit', handleSubmit);
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      hideError('error-message');
+
+      const dniNumber = document.getElementById('dni-number').value.trim();
+
+      if (!/^[0-9]{13}$/.test(dniNumber)) {
+        showError('error-message', 'El DNI debe tener exactamente 13 dígitos numéricos');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (!dniFrontFile) {
+        showError('error-message', 'Debes subir la foto del frente del DNI');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (!dniBackFile) {
+        showError('error-message', 'Debes subir la foto del reverso del DNI');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (!selfieFile) {
+        showError('error-message', 'Debes subir tu selfie con el DNI');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      const btnText = document.getElementById('btn-text');
+      const btnSpinner = document.getElementById('btn-spinner');
+
+      submitBtn.disabled = true;
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        btnText.textContent = 'Subiendo frente del DNI...';
+        const dniFrontResult = await uploadFile('verification-docs', dniFrontFile, currentProfile.id);
+        if (!dniFrontResult.success) throw new Error('Error subiendo frente del DNI: ' + dniFrontResult.error);
+
+        btnText.textContent = 'Subiendo reverso del DNI...';
+        const dniBackResult = await uploadFile('verification-docs', dniBackFile, currentProfile.id);
+        if (!dniBackResult.success) throw new Error('Error subiendo reverso del DNI: ' + dniBackResult.error);
+
+        btnText.textContent = 'Subiendo selfie...';
+        const selfieResult = await uploadFile('verification-docs', selfieFile, currentProfile.id);
+        if (!selfieResult.success) throw new Error('Error subiendo selfie: ' + selfieResult.error);
+
+        let incomeUrl = null;
+        if (incomeFile) {
+          btnText.textContent = 'Subiendo comprobante...';
+          const incomeResult = await uploadFile('verification-docs', incomeFile, currentProfile.id);
+          if (incomeResult.success) {
+            incomeUrl = incomeResult.path;
+          }
+        }
+
+        btnText.textContent = 'Finalizando...';
+        const updates = {
+          dni_number: dniNumber,
+          dni_front_url: dniFrontResult.path,
+          dni_back_url: dniBackResult.path,
+          selfie_url: selfieResult.path,
+          verification_status: 'submitted',
+        };
+        if (incomeUrl) updates.income_proof_url = incomeUrl;
+
+        const { error: updateError } = await supabaseClient
+          .from('profiles')
+          .update(updates)
+          .eq('id', currentProfile.id);
+
+        if (updateError) throw new Error('Error al guardar: ' + updateError.message);
+
+        const result = await getCurrentUser();
+        currentProfile = result.profile;
+        renderSubmittedState();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      } catch (err) {
+        console.error('Error:', err);
+        showError('error-message', err.message || 'Error inesperado. Intenta de nuevo.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } finally {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Enviar para verificación';
+        btnSpinner.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

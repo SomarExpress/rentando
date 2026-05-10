@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Propiedad - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      <div id="page-content">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/storage.js"></script>
+  <script>
+    let property = null;
+    let owner = null;
+    let currentUser = null;
+    let existingRequest = null;
+    let currentImageIndex = 0;
+
+    const AMENITY_LABELS = {
+      wifi: { label: 'WiFi', icon: 'wifi' },
+      ac: { label: 'Aire acondicionado', icon: 'wind' },
+      kitchen: { label: 'Cocina equipada', icon: 'utensils' },
+      parking: { label: 'Estacionamiento', icon: 'car' },
+      security: { label: 'Seguridad 24/7', icon: 'shield' },
+      pool: { label: 'Piscina', icon: 'waves' },
+      gym: { label: 'Gimnasio', icon: 'dumbbell' },
+      laundry: { label: 'Lavandería', icon: 'shirt' },
+      tv: { label: 'TV Cable', icon: 'tv' },
+      water: { label: 'Agua incluida', icon: 'droplet' },
+      electricity: { label: 'Luz incluida', icon: 'zap' },
+      garden: { label: 'Jardín', icon: 'trees' },
+    };
+
+    (async function() {
+      const params = new URLSearchParams(window.location.search);
+      const propertyId = params.get('id');
+
+      if (!propertyId) {
+        showError('No se especificó la propiedad');
+        return;
+      }
+
+      // Cargar usuario actual (puede ser null si no está logueado)
+      const userResult = await getCurrentUser();
+      currentUser = userResult;
+
+      await initLayout();
+
+      try {
+        // Cargar propiedad
+        const { data: prop, error } = await supabaseClient
+          .from('properties')
+          .select('*')
+          .eq('id', propertyId)
+          .single();
+
+        if (error || !prop) {
+          showError('Propiedad no encontrada');
+          return;
+        }
+
+        // Solo se muestra si está activa Y verificada, EXCEPTO si es el dueño
+        const isOwner = currentUser?.user?.id === prop.owner_id;
+        if (!isOwner && (prop.status !== 'active' || !prop.is_verified)) {
+          showError('Esta propiedad no está disponible');
+          return;
+        }
+
+        property = prop;
+
+        // Cargar info del dueño (solo nombre)
+        const { data: ownerData } = await supabaseClient
+          .from('profiles')
+          .select('id, full_name, phone, verification_status')
+          .eq('id', prop.owner_id)
+          .single();
+
+        owner = ownerData;
+
+        // Si está logueado, verificar si ya hay solicitud
+        if (currentUser?.user) {
+          const { data: req } = await supabaseClient
+            .from('contact_requests')
+            .select('*')
+            .eq('property_id', propertyId)
+            .eq('renter_id', currentUser.user.id)
+            .maybeSingle();
+
+          existingRequest = req;
+        }
+
+        // Incrementar view count
+        if (!isOwner) {
+          await supabaseClient.rpc('increment_property_views', { property_uuid: propertyId });
+        }
+
+        renderProperty();
+      } catch (err) {
+        console.error('Error:', err);
+        showError('Error al cargar: ' + err.message);
+      }
+    })();
+
+    function showError(msg) {
+      document.getElementById('page-content').innerHTML = `
+        <div style="max-width:540px;margin:4rem auto" class="card card-padding" style="text-align:center">
+          <div style="width:64px;height:64px;background:#FEE2E2;color:#DC2626;border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem">
+            <i data-lucide="alert-circle" style="width:32px;height:32px"></i>
+          </div>
+          <h2>${msg}</h2>
+          <a href="propiedades.html" class="btn btn-primary" style="margin-top:1rem">Ver otras propiedades</a>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function renderProperty() {
+      const isLoggedIn = !!currentUser?.user;
+      const isOwner = currentUser?.user?.id === property.owner_id;
+      const isRenter = currentUser?.profile?.role === 'renter';
+      const isVerified = currentUser?.profile?.verification_status === 'verified';
+
+      document.getElementById('page-content').innerHTML = `
+        <div class="animate-fade-in">
+          <a href="propiedades.html" style="color:var(--text-medium);font-size:0.9375rem;display:inline-flex;align-items:center;gap:0.375rem;margin-bottom:1rem">
+            <i data-lucide="arrow-left" style="width:16px;height:16px"></i>
+            Volver a propiedades
+          </a>
+
+          <div style="display:grid;grid-template-columns:1fr;gap:2rem">
+            <!-- Galería -->
+            ${renderGallery()}
+
+            <!-- Contenido principal en grid -->
+            <div style="display:grid;grid-template-columns:1fr;gap:2rem" id="main-content-grid">
+              <div>
+                ${renderMainInfo()}
+              </div>
+              <div>
+                ${renderSidebar(isLoggedIn, isOwner, isRenter, isVerified)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          @media (min-width: 1024px) {
+            #main-content-grid {
+              grid-template-columns: 1fr 380px !important;
+            }
+          }
+        </style>
+      `;
+
+      lucide.createIcons();
+
+      // Setup gallery navigation
+      setupGalleryNav();
+    }
+
+    function renderGallery() {
+      if (!property.images || property.images.length === 0) {
+        return `
+          <div style="aspect-ratio:16/9;background:var(--bg-cream);border-radius:1rem;display:flex;align-items:center;justify-content:center;color:var(--text-light)">
+            <i data-lucide="image-off" style="width:64px;height:64px"></i>
+          </div>
+        `;
+      }
+
+      currentImageIndex = property.cover_image_index || 0;
+
+      return `
+        <div>
+          <div style="position:relative;aspect-ratio:16/9;background:var(--bg-cream);border-radius:1rem;overflow:hidden">
+            <img id="main-image" src="${property.images[currentImageIndex]}" 
+                 style="width:100%;height:100%;object-fit:cover" 
+                 alt="${property.title}">
+            
+            ${property.images.length > 1 ? `
+              <button onclick="prevImage()" style="position:absolute;left:1rem;top:50%;transform:translateY(-50%);width:44px;height:44px;background:rgba(255,255,255,0.95);border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(10px)">
+                <i data-lucide="chevron-left" style="width:24px;height:24px"></i>
+              </button>
+              <button onclick="nextImage()" style="position:absolute;right:1rem;top:50%;transform:translateY(-50%);width:44px;height:44px;background:rgba(255,255,255,0.95);border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(10px)">
+                <i data-lucide="chevron-right" style="width:24px;height:24px"></i>
+              </button>
+              
+              <div id="image-counter" style="position:absolute;bottom:1rem;right:1rem;background:rgba(0,0,0,0.7);color:white;padding:0.375rem 0.875rem;border-radius:50px;font-size:0.875rem;font-weight:500">
+                ${currentImageIndex + 1} / ${property.images.length}
+              </div>
+            ` : ''}
+          </div>
+
+          ${property.images.length > 1 ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:0.5rem;margin-top:0.75rem">
+              ${property.images.map((img, idx) => `
+                <button onclick="goToImage(${idx})" id="thumb-${idx}" style="aspect-ratio:1;border-radius:8px;overflow:hidden;border:2px solid ${idx === currentImageIndex ? 'var(--primary)' : 'transparent'};cursor:pointer;padding:0;background:none">
+                  <img src="${img}" style="width:100%;height:100%;object-fit:cover" alt="">
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderMainInfo() {
+      const amenities = property.amenities || [];
+
+      return `
+        <h1 style="font-size:clamp(1.5rem,3vw,2rem);margin-bottom:0.5rem">${property.title}</h1>
+        
+        <div style="color:var(--text-medium);font-size:1rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.5rem">
+          <i data-lucide="map-pin" style="width:18px;height:18px"></i>
+          ${property.neighborhood}, ${CITY_NAMES[property.city]}
+        </div>
+
+        <!-- Quick stats -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1rem;margin-bottom:2rem;padding:1.25rem;background:var(--bg-cream);border-radius:1rem">
+          <div style="text-align:center">
+            <i data-lucide="bed" style="width:24px;height:24px;color:var(--primary);margin-bottom:0.25rem"></i>
+            <div style="font-weight:700;font-size:1.125rem">${property.bedrooms}</div>
+            <div style="font-size:0.8125rem;color:var(--text-medium)">Habitaciones</div>
+          </div>
+          <div style="text-align:center">
+            <i data-lucide="droplet" style="width:24px;height:24px;color:var(--primary);margin-bottom:0.25rem"></i>
+            <div style="font-weight:700;font-size:1.125rem">${property.bathrooms}</div>
+            <div style="font-size:0.8125rem;color:var(--text-medium)">Baños</div>
+          </div>
+          ${property.area_m2 ? `
+            <div style="text-align:center">
+              <i data-lucide="square" style="width:24px;height:24px;color:var(--primary);margin-bottom:0.25rem"></i>
+              <div style="font-weight:700;font-size:1.125rem">${property.area_m2}</div>
+              <div style="font-size:0.8125rem;color:var(--text-medium)">m²</div>
+            </div>
+          ` : ''}
+          ${property.parking_spaces > 0 ? `
+            <div style="text-align:center">
+              <i data-lucide="car" style="width:24px;height:24px;color:var(--primary);margin-bottom:0.25rem"></i>
+              <div style="font-weight:700;font-size:1.125rem">${property.parking_spaces}</div>
+              <div style="font-size:0.8125rem;color:var(--text-medium)">Parqueo</div>
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- Tags rápidas -->
+        ${(property.furnished || property.pets_allowed) ? `
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+            ${property.furnished ? `
+              <span style="background:var(--secondary-100);color:var(--secondary);padding:0.5rem 1rem;border-radius:50px;font-size:0.875rem;font-weight:600">
+                <i data-lucide="armchair" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> Amueblada
+              </span>
+            ` : ''}
+            ${property.pets_allowed ? `
+              <span style="background:var(--primary-100);color:var(--primary);padding:0.5rem 1rem;border-radius:50px;font-size:0.875rem;font-weight:600">
+                <i data-lucide="paw-print" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> Acepta mascotas
+              </span>
+            ` : ''}
+          </div>
+        ` : ''}
+
+        <!-- Descripción -->
+        <div style="margin-bottom:2rem">
+          <h2 style="font-size:1.375rem;margin-bottom:1rem">Descripción</h2>
+          <p style="color:var(--text-medium);line-height:1.7;white-space:pre-line">${property.description}</p>
+        </div>
+
+        <!-- Amenidades -->
+        ${amenities.length > 0 ? `
+          <div style="margin-bottom:2rem">
+            <h2 style="font-size:1.375rem;margin-bottom:1rem">Amenidades</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem">
+              ${amenities.map(am => {
+                const info = AMENITY_LABELS[am] || { label: am, icon: 'check' };
+                return `
+                  <div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;background:var(--bg-cream);border-radius:10px">
+                    <i data-lucide="${info.icon}" style="width:18px;height:18px;color:var(--primary)"></i>
+                    <span>${info.label}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${property.reference_point ? `
+          <div style="margin-bottom:2rem">
+            <h2 style="font-size:1.375rem;margin-bottom:0.5rem">Punto de referencia</h2>
+            <p style="color:var(--text-medium)">${property.reference_point}</p>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderSidebar(isLoggedIn, isOwner, isRenter, isVerified) {
+      // Card de precio
+      const priceCard = `
+        <div class="card card-padding" style="margin-bottom:1rem;position:sticky;top:90px">
+          <div style="display:flex;align-items:baseline;gap:0.375rem;margin-bottom:0.5rem">
+            <span style="font-family:'Playfair Display',serif;font-size:2rem;font-weight:900;color:var(--primary)">
+              ${formatPrice(property.price_lempiras)}
+            </span>
+            <span style="color:var(--text-light)">/mes</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:0.5rem;color:var(--text-medium);font-size:0.9375rem;margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border-light)">
+            ${property.deposit_amount > 0 ? `
+              <div style="display:flex;justify-content:space-between">
+                <span>Depósito:</span>
+                <strong>${formatPrice(property.deposit_amount)}</strong>
+              </div>
+            ` : ''}
+            <div style="display:flex;justify-content:space-between">
+              <span>Mínimo:</span>
+              <strong>${property.minimum_months} meses</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span>Servicios:</span>
+              <strong>${property.utilities_included ? 'Incluidos' : 'No incluidos'}</strong>
+            </div>
+          </div>
+
+          ${renderActionButton(isLoggedIn, isOwner, isRenter, isVerified)}
+        </div>
+      `;
+
+      return priceCard;
+    }
+
+    function renderActionButton(isLoggedIn, isOwner, isRenter, isVerified) {
+      // Si es el dueño
+      if (isOwner) {
+        return `
+          <div class="alert alert-info" style="margin-bottom:0">
+            <i data-lucide="info" style="width:20px;height:20px;flex-shrink:0;margin-top:2px"></i>
+            <div>Esta es tu propiedad. <a href="mis-propiedades.html" style="color:var(--blue);font-weight:600">Gestionarla →</a></div>
+          </div>
+        `;
+      }
+
+      // Si no está logueado
+      if (!isLoggedIn) {
+        return `
+          <a href="registro.html?role=renter" class="btn btn-primary btn-full" style="margin-bottom:0.5rem">
+            <i data-lucide="user-plus" style="width:18px;height:18px"></i>
+            Registrarme para contactar
+          </a>
+          <a href="login.html" class="btn btn-outline btn-full">
+            Ya tengo cuenta
+          </a>
+        `;
+      }
+
+      // Si está logueado pero no es rentador
+      if (!isRenter) {
+        return `
+          <div class="alert alert-warning" style="margin-bottom:0">
+            <i data-lucide="info" style="width:20px;height:20px;flex-shrink:0;margin-top:2px"></i>
+            <div>Solo rentadores pueden solicitar contacto.</div>
+          </div>
+        `;
+      }
+
+      // Si no está verificado
+      if (!isVerified) {
+        return `
+          <a href="verificacion.html" class="btn btn-primary btn-full">
+            <i data-lucide="shield-check" style="width:18px;height:18px"></i>
+            Verificar mi cuenta primero
+          </a>
+          <p style="font-size:0.8125rem;color:var(--text-light);text-align:center;margin-top:0.75rem">
+            Para solicitar contacto necesitas tener tu cuenta verificada
+          </p>
+        `;
+      }
+
+      // Ya hay solicitud existente
+      if (existingRequest) {
+        const statusInfo = {
+          pending: { color: '#EA580C', bg: '#FFEDD5', text: 'Solicitud enviada - Esperando respuesta del dueño' },
+          accepted: { color: '#059669', bg: '#D1FAE5', text: '¡Solicitud aceptada!' },
+          rejected: { color: '#DC2626', bg: '#FEE2E2', text: 'Solicitud rechazada' },
+          expired: { color: '#6B7280', bg: '#F3F4F6', text: 'Solicitud expirada' },
+        };
+
+        const info = statusInfo[existingRequest.status];
+
+        if (existingRequest.status === 'accepted' && owner?.phone) {
+          const message = `Hola, vi tu propiedad "${property.title}" en RENTO y me interesa.`;
+          const whatsappUrl = getWhatsAppLink(owner.phone, message);
+          return `
+            <div style="background:${info.bg};color:${info.color};padding:1rem;border-radius:12px;text-align:center;margin-bottom:1rem;font-weight:600">
+              ${info.text}
+            </div>
+            <a href="${whatsappUrl}" target="_blank" class="btn btn-primary btn-full" style="background:#25D366;border-color:#25D366">
+              <i data-lucide="message-circle" style="width:18px;height:18px"></i>
+              Contactar por WhatsApp
+            </a>
+            <p style="font-size:0.8125rem;color:var(--text-light);text-align:center;margin-top:0.75rem">
+              Dueño: ${owner.full_name}
+            </p>
+          `;
+        }
+
+        return `
+          <div style="background:${info.bg};color:${info.color};padding:1rem;border-radius:12px;text-align:center;margin-bottom:0;font-weight:600">
+            ${info.text}
+          </div>
+          ${existingRequest.rejection_reason ? `
+            <p style="font-size:0.875rem;color:var(--text-medium);margin-top:0.75rem">
+              ${existingRequest.rejection_reason}
+            </p>
+          ` : ''}
+        `;
+      }
+
+      // Puede solicitar contacto
+      return `
+        <button onclick="showContactModal()" class="btn btn-primary btn-full">
+          <i data-lucide="message-square" style="width:18px;height:18px"></i>
+          Solicitar contacto
+        </button>
+        <p style="font-size:0.8125rem;color:var(--text-light);text-align:center;margin-top:0.75rem">
+          El dueño verá tu solicitud y decidirá si compartir su contacto
+        </p>
+      `;
+    }
+
+    function nextImage() {
+      currentImageIndex = (currentImageIndex + 1) % property.images.length;
+      updateImage();
+    }
+
+    function prevImage() {
+      currentImageIndex = (currentImageIndex - 1 + property.images.length) % property.images.length;
+      updateImage();
+    }
+
+    function goToImage(idx) {
+      currentImageIndex = idx;
+      updateImage();
+    }
+
+    function updateImage() {
+      document.getElementById('main-image').src = property.images[currentImageIndex];
+      const counter = document.getElementById('image-counter');
+      if (counter) counter.textContent = `${currentImageIndex + 1} / ${property.images.length}`;
+
+      // Actualizar borders de thumbs
+      property.images.forEach((_, idx) => {
+        const thumb = document.getElementById(`thumb-${idx}`);
+        if (thumb) thumb.style.borderColor = idx === currentImageIndex ? 'var(--primary)' : 'transparent';
+      });
+    }
+
+    function setupGalleryNav() {
+      // Permitir navegar con teclas
+      document.addEventListener('keydown', (e) => {
+        if (!property?.images || property.images.length <= 1) return;
+        if (e.key === 'ArrowLeft') prevImage();
+        if (e.key === 'ArrowRight') nextImage();
+      });
+    }
+
+    function showContactModal() {
+      const modal = document.createElement('div');
+      modal.id = 'contact-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem;backdrop-filter:blur(4px)';
+      modal.innerHTML = `
+        <div class="card card-padding" style="max-width:480px;width:100%;animation:slideUp 0.3s ease-out" onclick="event.stopPropagation()">
+          <h2 style="font-size:1.5rem;margin-bottom:0.5rem">Solicitar contacto</h2>
+          <p style="color:var(--text-medium);margin-bottom:1.5rem">
+            Envía un mensaje al dueño. Si acepta, podrás contactarlo por WhatsApp.
+          </p>
+
+          <div id="modal-error" class="alert alert-error hidden"></div>
+
+          <div class="input-group">
+            <label class="input-label">Mensaje al dueño</label>
+            <textarea id="contact-message" class="input-field" rows="4" 
+                      placeholder="Hola, me interesa tu propiedad. ¿Está disponible? ¿Podríamos coordinar una visita?"
+                      maxlength="500"></textarea>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">¿Cuándo te mudarías?</label>
+            <input type="date" id="contact-move-date" class="input-field" min="${new Date().toISOString().split('T')[0]}">
+          </div>
+
+          <div style="display:flex;gap:0.75rem;justify-content:flex-end">
+            <button onclick="closeContactModal()" class="btn btn-outline">Cancelar</button>
+            <button onclick="sendContactRequest()" class="btn btn-primary" id="send-btn">
+              <span id="send-text">Enviar solicitud</span>
+              <span id="send-spinner" class="spinner spinner-small hidden" style="border-color:rgba(255,255,255,0.3);border-top-color:white"></span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      modal.addEventListener('click', closeContactModal);
+      document.body.appendChild(modal);
+    }
+
+    function closeContactModal() {
+      const modal = document.getElementById('contact-modal');
+      if (modal) modal.remove();
+    }
+
+    async function sendContactRequest() {
+      const message = document.getElementById('contact-message').value.trim();
+      const moveDate = document.getElementById('contact-move-date').value;
+
+      const errorEl = document.getElementById('modal-error');
+      const sendBtn = document.getElementById('send-btn');
+      const sendText = document.getElementById('send-text');
+      const sendSpinner = document.getElementById('send-spinner');
+
+      errorEl.classList.add('hidden');
+
+      if (!message || message.length < 10) {
+        errorEl.textContent = 'Por favor escribe un mensaje (mínimo 10 caracteres)';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      sendBtn.disabled = true;
+      sendText.textContent = 'Enviando...';
+      sendSpinner.classList.remove('hidden');
+
+      try {
+        const { error } = await supabaseClient
+          .from('contact_requests')
+          .insert({
+            property_id: property.id,
+            renter_id: currentUser.user.id,
+            owner_id: property.owner_id,
+            message,
+            preferred_move_date: moveDate || null,
+            status: 'pending',
+          });
+
+        if (error) {
+          if (error.code === '23505') {
+            throw new Error('Ya enviaste una solicitud para esta propiedad');
+          }
+          throw error;
+        }
+
+        // Incrementar contact_count
+        await supabaseClient
+          .from('properties')
+          .update({ contact_count: (property.contact_count || 0) + 1 })
+          .eq('id', property.id);
+
+        closeContactModal();
+        location.reload();
+
+      } catch (err) {
+        console.error('Error:', err);
+        errorEl.textContent = err.message || 'Error al enviar. Intenta de nuevo.';
+        errorEl.classList.remove('hidden');
+        sendBtn.disabled = false;
+        sendText.textContent = 'Enviar solicitud';
+        sendSpinner.classList.add('hidden');
+      }
+    }
+
+    // Hacer funciones globales accesibles
+    window.nextImage = nextImage;
+    window.prevImage = prevImage;
+    window.goToImage = goToImage;
+    window.showContactModal = showContactModal;
+    window.closeContactModal = closeContactModal;
+    window.sendContactRequest = sendContactRequest;
+  </script>
+</body>
+</html>

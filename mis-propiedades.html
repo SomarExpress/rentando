@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mis propiedades - RENTO</title>
+  
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div id="header-slot"></div>
+
+  <main class="dashboard-container">
+    <div class="dashboard-content">
+      <div id="page-content">
+        <div style="text-align:center;padding:4rem">
+          <div class="spinner" style="margin:0 auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    let currentProfile = null;
+
+    (async function() {
+      const result = await requireAuth();
+      if (!result) return;
+
+      currentProfile = result.profile;
+      await initLayout();
+
+      // Solo dueños
+      if (currentProfile.role !== 'owner') {
+        document.getElementById('page-content').innerHTML = `
+          <div style="max-width:540px;margin:4rem auto" class="card card-padding" style="text-align:center">
+            <h2>Acceso denegado</h2>
+            <p style="color:var(--text-medium);margin:1rem 0">Esta página es solo para dueños.</p>
+            <a href="dashboard.html" class="btn btn-primary">Volver al panel</a>
+          </div>
+        `;
+        return;
+      }
+
+      await loadProperties();
+    })();
+
+    async function loadProperties() {
+      try {
+        const { data: properties, error } = await supabaseClient
+          .from('properties')
+          .select('*')
+          .eq('owner_id', currentProfile.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        renderPage(properties || []);
+      } catch (err) {
+        console.error('Error:', err);
+        document.getElementById('page-content').innerHTML = `
+          <div class="alert alert-error">
+            <i data-lucide="alert-circle"></i>
+            <div>Error al cargar tus propiedades: ${err.message}</div>
+          </div>
+        `;
+        lucide.createIcons();
+      }
+    }
+
+    function renderPage(properties) {
+      const params = new URLSearchParams(window.location.search);
+      const showSuccessBanner = params.get('published') === '1';
+
+      const successBanner = showSuccessBanner ? `
+        <div class="alert alert-success" style="margin-bottom:1.5rem">
+          <i data-lucide="check-circle-2" style="width:20px;height:20px;flex-shrink:0;margin-top:2px"></i>
+          <div>
+            <strong>¡Propiedad publicada!</strong> Será revisada por nuestro equipo en 24-48 horas.
+          </div>
+        </div>
+      ` : '';
+
+      document.getElementById('page-content').innerHTML = `
+        <div class="animate-fade-in">
+          ${successBanner}
+
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:2rem">
+            <div>
+              <h1 class="dashboard-greeting">Mis propiedades</h1>
+              <p class="dashboard-subtitle">Gestiona tus propiedades publicadas</p>
+            </div>
+            <a href="publicar.html" class="btn btn-primary">
+              <i data-lucide="plus" style="width:18px;height:18px"></i>
+              Publicar nueva
+            </a>
+          </div>
+
+          ${properties.length === 0 ? renderEmptyState() : renderPropertiesList(properties)}
+        </div>
+      `;
+
+      lucide.createIcons();
+    }
+
+    function renderEmptyState() {
+      return `
+        <div style="max-width:540px;margin:3rem auto" class="card card-padding" style="text-align:center">
+          <div style="width:80px;height:80px;background:var(--primary-100);color:var(--primary);border-radius:1rem;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1.5rem">
+            <i data-lucide="building-2" style="width:40px;height:40px"></i>
+          </div>
+          <h2 style="font-size:1.5rem;margin-bottom:0.75rem">Aún no tienes propiedades</h2>
+          <p style="color:var(--text-medium);margin-bottom:1.5rem">
+            Publica tu primera propiedad y empieza a recibir solicitudes de rentadores verificados.
+          </p>
+          <a href="publicar.html" class="btn btn-primary">
+            <i data-lucide="plus" style="width:18px;height:18px"></i>
+            Publicar mi primera propiedad
+          </a>
+        </div>
+      `;
+    }
+
+    function renderPropertiesList(properties) {
+      return `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.5rem">
+          ${properties.map(p => renderPropertyCard(p)).join('')}
+        </div>
+      `;
+    }
+
+    function renderPropertyCard(property) {
+      const statusConfig = {
+        pending: { label: 'En revisión', color: '#EA580C', bg: '#FFEDD5' },
+        active: { label: 'Activa', color: '#059669', bg: '#D1FAE5' },
+        rented: { label: 'Rentada', color: '#2563EB', bg: '#DBEAFE' },
+        rejected: { label: 'Rechazada', color: '#DC2626', bg: '#FEE2E2' },
+        paused: { label: 'Pausada', color: '#6B7280', bg: '#F3F4F6' },
+        archived: { label: 'Archivada', color: '#6B7280', bg: '#F3F4F6' },
+      };
+
+      const status = statusConfig[property.status] || statusConfig.pending;
+      const cover = property.images && property.images[property.cover_image_index || 0];
+
+      return `
+        <div class="card card-hover" style="overflow:hidden">
+          <div style="position:relative;aspect-ratio:16/10;background:var(--bg-cream);overflow:hidden">
+            ${cover ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover" alt="${property.title}">` : `
+              <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-light)">
+                <i data-lucide="image-off" style="width:48px;height:48px"></i>
+              </div>
+            `}
+            <div style="position:absolute;top:0.75rem;left:0.75rem;background:${status.bg};color:${status.color};padding:0.375rem 0.75rem;border-radius:50px;font-size:0.8125rem;font-weight:600">
+              ${status.label}
+            </div>
+          </div>
+
+          <div style="padding:1.25rem">
+            <h3 style="font-family:'DM Sans',sans-serif;font-size:1.0625rem;font-weight:700;margin-bottom:0.5rem;line-height:1.4">
+              ${property.title}
+            </h3>
+            <div style="color:var(--text-medium);font-size:0.875rem;margin-bottom:0.75rem;display:flex;align-items:center;gap:0.375rem">
+              <i data-lucide="map-pin" style="width:14px;height:14px"></i>
+              ${property.neighborhood}, ${CITY_NAMES[property.city]}
+            </div>
+            <div style="color:var(--text-light);font-size:0.875rem;margin-bottom:0.75rem;display:flex;gap:0.75rem">
+              <span>${property.bedrooms} hab</span>
+              <span>•</span>
+              <span>${property.bathrooms} baños</span>
+              <span>•</span>
+              <span>${PROPERTY_TYPE_NAMES[property.property_type]}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:0.25rem;padding-top:0.75rem;border-top:1px solid var(--border-light);margin-bottom:1rem">
+              <span style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:var(--primary)">
+                ${formatPrice(property.price_lempiras)}
+              </span>
+              <span style="color:var(--text-light);font-size:0.875rem">/mes</span>
+            </div>
+
+            ${property.status === 'rejected' && property.rejection_reason ? `
+              <div class="alert alert-error" style="margin-bottom:0.75rem;font-size:0.875rem;padding:0.625rem 0.875rem">
+                <strong>Razón del rechazo:</strong> ${property.rejection_reason}
+              </div>
+            ` : ''}
+
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <a href="propiedad.html?id=${property.id}" class="btn btn-outline" style="flex:1;padding:0.625rem 1rem;font-size:0.875rem">
+                <i data-lucide="eye" style="width:16px;height:16px"></i>
+                Ver
+              </a>
+              ${property.status === 'active' ? `
+                <button onclick="changeStatus('${property.id}', 'paused')" class="btn btn-outline" style="padding:0.625rem 1rem;font-size:0.875rem" title="Pausar">
+                  <i data-lucide="pause" style="width:16px;height:16px"></i>
+                </button>
+              ` : ''}
+              ${property.status === 'paused' ? `
+                <button onclick="changeStatus('${property.id}', 'active')" class="btn btn-outline" style="padding:0.625rem 1rem;font-size:0.875rem" title="Reactivar">
+                  <i data-lucide="play" style="width:16px;height:16px"></i>
+                </button>
+              ` : ''}
+              <button onclick="deleteProperty('${property.id}', '${property.title.replace(/'/g, "\\'")}')" class="btn btn-outline" style="padding:0.625rem 1rem;font-size:0.875rem;color:#DC2626;border-color:#FECACA" title="Eliminar">
+                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+              </button>
+            </div>
+
+            <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;color:var(--text-light);font-size:0.8125rem">
+              <span><i data-lucide="eye" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> ${property.view_count || 0} vistas</span>
+              <span><i data-lucide="message-square" style="width:14px;height:14px;display:inline;vertical-align:middle"></i> ${property.contact_count || 0} contactos</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function changeStatus(id, newStatus) {
+      try {
+        const { error } = await supabaseClient
+          .from('properties')
+          .update({ status: newStatus })
+          .eq('id', id);
+
+        if (error) throw error;
+        await loadProperties();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async function deleteProperty(id, title) {
+      if (!confirm(`¿Estás seguro de eliminar "${title}"?\n\nEsta acción no se puede deshacer.`)) {
+        return;
+      }
+
+      try {
+        const { error } = await supabaseClient
+          .from('properties')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        await loadProperties();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
